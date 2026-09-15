@@ -10,7 +10,7 @@ jobs:
     timeout-minutes: 20
     env:
       HERMES_SOURCE: ${{ github.workspace }}/.test-deps/hermes
-      HERMES_HOME: ${{ runner.temp }}/ryze-ci-profile
+      HERMES_HOME: ${{ github.workspace }}/.test-deps/profile
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
