@@ -1,0 +1,40 @@
+name: ryzeapi
+version: 0.14.0-beta.1
+kind: platform
+description: WhatsApp RyzeAPI com WebSocket permanente, webhook de contingência, identidades verificadas e fila deduplicada.
+author: Neriton Dias
+# Instagram: https://www.instagram.com/neritondias/
+homepage: https://github.com/NeritonDias/hermes-ryzeapi
+platforms: [linux]
+python_dependencies:
+  - 'httpx>=0.28.1,<1'
+  - 'aiohttp>=3.14.3,<4'
+  - 'fastapi>=0.133.1,<1'
+provides_tools:
+  - ryzeapi_send_text
+  - ryzeapi_send_media
+  - ryzeapi_send_sticker
+  - ryzeapi_send_contact
+  - ryzeapi_send_location
+  - ryzeapi_send_pix
+  - ryzeapi_send_buttons
+  - ryzeapi_send_list
+  - ryzeapi_send_carousel
+  - ryzeapi_send_form
+  - ryzeapi_send_poll
+  - ryzeapi_send_event
+  - ryzeapi_send_reaction
+  - ryzeapi_send_status
+optional_env:
+  - name: RYZEAPI_INSTANCE
+    description: Nome da NOVA instancia RyzeAPI escolhida pelo usuario
+    secret: false
+  - name: RYZEAPI_INSTANCE_TOKEN
+    description: TokenInstance atual (nao TokenAccount)
+    secret: true
+  - name: RYZEAPI_WEBHOOK_SECRET
+    description: Segredo aleatorio exclusivo do webhook (minimo 32 caracteres)
+    secret: true
+  - name: RYZEAPI_ALLOWED_USERS
+    description: Numeros pessoais autorizados em formato internacional, separados por virgula
+    secret: false
