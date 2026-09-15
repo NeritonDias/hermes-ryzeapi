@@ -75,6 +75,7 @@ Se ferramentas não aparecerem no chat, confira o toolset ryzeapi na configuraç
 
 - Plugins list: ryzeapi carregado, sem erro.
 - Nova sessão: ryzeapi e ryzeapi-painel em skills_list; referências abrindo com skill_view.
+- Verificação reproduzível, com o Python Hermes: python /caminho/do/perfil/plugins/ryzeapi/scripts/verify_install.py (sem chamadas à RyzeAPI).
 - Painel: estado conectado confirmado e consumidor saudável; WS conectado sozinho não basta.
 - Teste dry_run de envio: valida sem POST externo.
 - Teste real autorizado: aceite, ID de mensagem e recibo/renderização conforme o formato. Não reenviar automaticamente em timeout.

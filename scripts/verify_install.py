@@ -4,6 +4,7 @@ from pathlib import Path
 from hermes_constants import get_hermes_home
 from hermes_cli.plugins import discover_plugins, get_plugin_manager
 from tools.skills_tool import skills_list, skill_view
+from tools.registry import registry
 
 discover_plugins()
 manager = get_plugin_manager()
@@ -17,5 +18,8 @@ for name in ('ryzeapi', 'ryzeapi-painel'):
         'bundled_readable': json.loads(skill_view('ryzeapi:' + name, preprocess=False)).get('success') is True,
     }
 passed = all(all(value.values()) for value in checks.values())
-print(json.dumps({'success': passed, 'skills': checks, 'provider_calls': 0}, ensure_ascii=False))
+tool_names = registry.get_tool_names_for_toolset('ryzeapi')
+passed = passed and len(tool_names) == 14
+print(json.dumps({'success': passed, 'skills': checks, 'registered_tools': len(tool_names),
+                  'provider_calls': 0}, ensure_ascii=False))
 raise SystemExit(0 if passed else 1)

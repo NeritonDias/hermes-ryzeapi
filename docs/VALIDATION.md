@@ -11,6 +11,7 @@ Data: 2026-09-15. Hermes a982d2c882ce14aca6e98873b32d3dce8a496a27; Linux ARM64; 
 - Parser/linter Hermes, skills_list, skill_view, referências e /ryzeapi + /ryzeapi-painel: aprovados.
 - Browser sintético: 23 cenários de tarefas e 25 de grupos aprovados, sem erros de página; rede bloqueada. Viewports desktop e móvel.
 - Gitleaks 8.30.1: nenhum segredo detectado no diretório público.
+- Instalação real pelo comando Hermes a partir do repositório GitHub em perfil limpo: aprovada. Após habilitar e descobrir o plugin, as duas skills estavam instaladas, listadas e legíveis tanto pelo nome curto quanto pelo namespace, sem instalar skills separadamente e sem chamadas à RyzeAPI.
 
 O scanner nativo do Hermes emitiu CAUTION para fixtures sintéticas e comandos de testes/CI. Achados revisados: tokens de teste, entradas inválidas para testar rejeição, endereço loopback e instalação/execução de testes. Não foram removidos testes para esconder o aviso. Leia o relatório antes de aceitar uma instalação.
 
