@@ -96,7 +96,9 @@ Remove `dry_run` only for an authorized destination and content. An `accepted` r
 
 Current version: **[v1.0.0-beta.1](https://github.com/NeritonDias/hermes-ryzeapi/releases/tag/v1.0.0-beta.1)**. GitHub's “1 tag” label is a count, not a version number. The `beta.1` suffix marks a prerelease, **not stable 1.0.0**.
 
-The earlier `v0.14.0-beta.1` remains available. This release standardizes the public 1.0 beta line and documentation; the version change does not add pending features or establish native WhatsApp parity. Published release tags are preserved.
+The earlier `v0.14.0-beta.1` remains available. This release standardizes the public 1.0 beta line and documentation; the version change does not add pending features or establish native WhatsApp parity.
+
+Privacy maintenance: the initial public history and old archive were sanitized to replace a partially anonymized test fixture. Commit hashes and archive checksums changed; use a fresh clone/download if you obtained the initial release.
 
 ## Development and support
 

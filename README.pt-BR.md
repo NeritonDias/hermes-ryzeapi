@@ -50,6 +50,8 @@ Versão atual: **[v1.0.0-beta.1](https://github.com/NeritonDias/hermes-ryzeapi/r
 
 ## Duas skills instaladas automaticamente
 
+Nota de privacidade: o histórico inicial e o pacote antigo foram saneados para substituir um dado de teste parcialmente anonimizado. Os hashes dos commits e do pacote mudaram; faça um novo clone/download se obteve a versão inicial.
+
 Ao carregar o plugin habilitado, as duas skills são registradas e disponibilizadas no perfil ativo, **sem instalar skills separadamente**:
 
 - **ryzeapi** — operação por conversa/API, mensagens, instâncias e diagnóstico.
