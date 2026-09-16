@@ -1,81 +1,107 @@
 # Hermes × RyzeAPI
 
-Plugin comunitário de WhatsApp para **Hermes Agent**, com painel web, duas skills integradas, WebSocket permanente e webhook de contingência.
+[![English](https://img.shields.io/badge/Language-English-196b62)](README.md) [![Português (Brasil)](https://img.shields.io/badge/Idioma-PT--BR-196b62)](README.pt-BR.md)
+[![Release](https://img.shields.io/github/v/release/NeritonDias/hermes-ryzeapi?include_prereleases)](https://github.com/NeritonDias/hermes-ryzeapi/releases)
+[![Tests](https://github.com/NeritonDias/hermes-ryzeapi/actions/workflows/test.yml/badge.svg)](https://github.com/NeritonDias/hermes-ryzeapi/actions/workflows/test.yml)
 
-**Autor: Neriton Dias** · [Instagram @neritondias](https://www.instagram.com/neritondias/) · [MIT](LICENSE)
+A community WhatsApp integration for **Hermes Agent** with a web dashboard, two bundled skills, persistent WebSocket connectivity and webhook fallback.
 
-**Beta pública: 0.14.0-beta.1.** Projeto independente, sem afiliação oficial com Nous Research, RyzeAPI ou WhatsApp. Requer sua própria conta RyzeAPI e um Hermes configurado; este repositório não inclui credenciais, hospedagem nem assinatura de modelo.
+**Author: Neriton Dias** · [Instagram @neritondias](https://www.instagram.com/neritondias/) · [MIT license](LICENSE)
 
-## O que inclui
+**Public beta: 1.0.0-beta.1.** Independent project, not officially affiliated with Nous Research, RyzeAPI or WhatsApp. Bring your own RyzeAPI account and configured Hermes installation. No credentials, hosting or model subscription are included. Dashboard labels and bundled skill instructions currently use Brazilian Portuguese; the README and installation guide are bilingual.
 
-- Painel por tarefas: visão geral, instâncias, métricas e configurações; QR Code com acompanhamento de conexão.
-- Uma instância ativa como canal do Hermes; listagem de outras instâncias da conta. Não são vários canais de IA simultâneos.
-- Firewall de contatos e grupos: só ouvir/arquivar ou ouvir e responder; menções/respostas ou todas as mensagens; contatos autorizados ou todos os membros.
-- Buffer de mensagens, mídia, transcrição de áudio e opção de exibir ou não a transcrição na conversa.
-- Arquivo privado por grupo/data e registro de entradas/saídas, sem importar histórico automaticamente.
-- 14 ferramentas de envio: texto, mídia, sticker, contato, localização, PIX, botões, lista, carrossel, formulário, enquete, evento, reação e Status.
-- Correlação de cliques de botões/listas, fila SQLite persistente e deduplicação entre WebSocket e webhook.
+## An alternative to the built-in WhatsApp channel
 
-## Instalação
+You can use this plugin **instead of Hermes' built-in Baileys-based WhatsApp channel for supported workflows**, keeping Hermes as your agent and connecting WhatsApp through your own RyzeAPI account. No Hermes core patches are needed. This is not Meta's official WhatsApp Business Cloud API integration.
 
-Suporte inicial: **Linux com systemd de usuário**, Python 3.12+ no ambiente do Hermes, gateway e dashboard executados pelo mesmo usuário/perfil. Não depende de Oracle ou Cloudflare. A autenticação do dashboard é responsabilidade do Hermes/proxy; nunca exponha o painel sem autenticação.
+**This beta does not provide complete feature parity with the built-in channel.** Poll vote handling, automatic clarification-as-poll and recovery of quoted media attachments are not fully equivalent or validated here. Read the [comparison and migration checklist](docs/INSTALL.md#migrating-from-built-in-whatsapp) before switching workflows that depend on them.
+
+## What's included
+
+- Task-oriented dashboard: overview, instances, metrics and settings; QR pairing with connection-state feedback.
+- One active instance as the Hermes channel, plus a list of other account instances—not multiple simultaneous AI channels.
+- Contact and group firewall: listen/archive only or listen/respond; mentions/replies or all messages; authorized contacts or all group members.
+- Message buffer, media handling, audio transcription and optional transcript echo.
+- Private group/date archives and membership change records, without automatic history import.
+- 14 sending tools: text, media, sticker, contact, location, PIX, buttons, list, carousel, form, poll, event, reaction and Status.
+- Button/list reply correlation, persistent SQLite queue and deduplication across WebSocket and webhook.
+
+## Installation
+
+Initial support: **Linux with user-level systemd**, Python 3.12+ in the Hermes environment, and gateway/dashboard running under the same user and Hermes profile. Oracle and Cloudflare are not required. Dashboard authentication must be provided by Hermes or your proxy; never expose it without authentication.
+
+Use the Python interpreter from your Hermes environment and replace `/path/to/profile` with your active profile:
 
 ```bash
 hermes plugins install NeritonDias/hermes-ryzeapi --no-enable
 hermes plugins list
+python -m pip install -r /path/to/profile/plugins/ryzeapi/requirements.txt
+hermes plugins doctor /path/to/profile/plugins/ryzeapi --ci
 hermes plugins enable ryzeapi
 ```
 
-Antes de ativar o WhatsApp, siga **[o guia completo](docs/INSTALL.md)** para configurar seu domínio, webhook e serviço. O plugin começa fechado, sem destinatários liberados. Revisar código antes de habilitar: plugins executam com as permissões do processo Hermes. Instalação por GitHub não significa revisão pelo catálogo oficial.
+The tested native installer does **not** install Python dependencies automatically. Follow the **[complete installation guide](docs/INSTALL.md)** before enabling WhatsApp: configure authentication, HTTPS webhook routing, credentials and the firewall. No recipients are allowed by default.
 
-Para fixar uma versão, use `--ref` com o SHA completo da release. Para atualização, prefira versões revisadas; consulte [atualização e remoção](docs/INSTALL.md#atualização-e-remoção).
+Review code and scanner findings before enabling a plugin: it runs with the Hermes process permissions. Installing from GitHub does not mean it has been approved by the official catalog. For an immutable install, use `--ref` with the release's full commit SHA; see [updates and removal](docs/INSTALL.md#updates-and-removal).
 
-## Duas skills instaladas automaticamente
+## Two skills installed automatically
 
-Ao carregar o plugin habilitado, as duas skills são registradas e disponibilizadas no perfil ativo, **sem instalar skills separadamente**:
+When the enabled plugin loads, it registers and makes both skills available in the active profile—**no separate skill installation required**:
 
-- **ryzeapi** — operação por conversa/API, mensagens, instâncias e diagnóstico.
-- **ryzeapi-painel** — configuração, uso e verificação da interface.
+| Skill | Purpose |
+| --- | --- |
+| `ryzeapi` | Conversation/API workflows, messaging, instance operations and diagnostics. |
+| `ryzeapi-painel` | Dashboard setup, navigation and verification. |
 
-Abra uma nova sessão e confira `skills_list`, `/ryzeapi` e `/ryzeapi-painel`. As cópias qualificadas `ryzeapi:ryzeapi` e `ryzeapi:ryzeapi-painel` também ficam disponíveis. Ambas são descobríveis em qualquer canal; o Hermes carrega o conteúdo pertinente quando necessário, não ambos em toda mensagem.
+Start a new session and check `skills_list`, `/ryzeapi` and `/ryzeapi-painel`. Namespaced copies, `ryzeapi:ryzeapi` and `ryzeapi:ryzeapi-painel`, are also available. Both are discoverable across channels; Hermes loads the relevant instructions when needed, not both bodies on every message.
 
-Atualizações preservam skills personalizadas: se houver alteração local ou conflito de nome, o plugin não sobrescreve a cópia e registra um aviso. Veja [o ciclo de atualização](docs/INSTALL.md#atualização-e-remoção).
+Updates preserve customized skills: local edits and name conflicts are not overwritten and generate a warning. See the [managed update lifecycle](docs/INSTALL.md#updates-and-removal).
 
-As skills não substituem ferramentas nem concedem permissões. O mapa da API inclui recursos ainda não expostos nesta beta; uma instrução não implementa um endpoint ausente.
+Skills do not implement missing tools or grant permissions. Their API map includes operations not yet exposed in this beta. Direct account-administration tools in chat remain pending.
 
-## Ferramentas de mensagens
+## Message tools
+
+Synthetic `ryzeapi_send_buttons` example:
 
 ```json
 {
   "number": "5511999999999",
-  "request_id": "meu-teste-unico-001",
+  "request_id": "unique-test-001",
   "payload": {
-    "contentText": "Como posso ajudar?",
-    "buttons": [{"id": "ajuda", "displayText": "Quero ajuda", "type": "REPLY"}]
+    "contentText": "How can I help?",
+    "buttons": [
+      {"id": "help", "displayText": "Help me", "type": "REPLY"}
+    ]
   },
   "dry_run": true
 }
 ```
 
-Exemplo sintético para `ryzeapi_send_buttons`. Retire dry_run apenas com destino/conteúdo autorizados. `accepted` confirma aceite da API, não entrega/renderização.
+Remove `dry_run` only for an authorized destination and content. An `accepted` result means the API accepted the request, not that WhatsApp delivered or rendered it.
 
-## Limites importantes
+## Important limitations
 
-- Carrossel: experimental. Houve falha de renderização em teste real; a variante com imagens ainda não tem confirmação conclusiva.
-- Botões/listas: correlação coberta por testes automatizados com o formato observado; a confirmação humana final do novo ciclo de resposta ainda está pendente nesta beta.
-- Votos de enquete, respostas de formulário e presença em eventos não têm todos os retornos validados. Enviar um formato não significa interpretar todos os seus eventos.
-- Mídias: limite de 8 MiB no pipeline atual. STT depende da configuração do Hermes, tem timeout e limites de transcrição; não há promessa de áudio ilimitado.
-- Grupos: liberar todos os membros permite que eles acionem o agente e suas ferramentas; use apenas grupos confiáveis e permissões mínimas. Arquivos/conversas são dados não confiáveis.
-- PIX apresenta chave para copiar; não executa pagamento, cobrança nem confirma recebimento. Status exige autorização explícita da audiência/conteúdo.
-- Não há garantia de processamento/entrega exatamente uma vez. Operações incertas não são repetidas automaticamente; consulte os registros.
-- Correlações de menus expiram em 7 dias. COPY/URL/CALL não produzem necessariamente uma mensagem de resposta.
-- Beta validada contra o commit Hermes `a982d2c882ce14aca6e98873b32d3dce8a496a27`. Compatibilidade com outras versões/SOs precisa ser testada; não declaramos compatibilidade universal.
+- **Instance management:** dashboard creation is part of the selection flow while the channel is paused. An independent create-instance action and account-administration tools in chat are not included in this beta.
+- **Carousel:** experimental. A real rendering failure occurred; the image-based variant still lacks conclusive confirmation.
+- **Buttons/lists:** observed reply formats are covered by automated correlation tests; final human confirmation of the renewed response cycle remains pending.
+- **Interactive returns:** not all poll votes, form responses and event attendance returns are validated. Sending a format does not imply handling every incoming event.
+- **Media:** the current pipeline has an 8 MiB limit. Transcription depends on Hermes configuration and has timeouts/limits; unlimited audio is not promised.
+- **Groups:** allowing every member to trigger the agent exposes its enabled tools. Use trusted groups and minimum permissions; messages and attachments are untrusted input.
+- **PIX:** displays a key for copying; does not perform payments, create charges or verify receipt. Status requires specific authorization for content and audience.
+- **Delivery:** no exactly-once guarantee. Uncertain operations are not automatically retried; inspect their records first.
+- **Menus:** correlation expires after seven days. COPY/URL/CALL actions do not necessarily generate reply messages.
+- **Compatibility:** tested against Hermes commit `a982d2c882ce14aca6e98873b32d3dce8a496a27`. Other versions and operating systems need testing.
 
-## Desenvolvimento e suporte
+## Versions and releases
 
-[Instalação](docs/INSTALL.md) · [Segurança](SECURITY.md) · [Contribuir](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Validação](docs/VALIDATION.md)
+Current version: **[v1.0.0-beta.1](https://github.com/NeritonDias/hermes-ryzeapi/releases/tag/v1.0.0-beta.1)**. GitHub's “1 tag” label is a count, not a version number. The `beta.1` suffix marks a prerelease, **not stable 1.0.0**.
 
-Abra uma issue com versão, sistema, passos e **logs sanitizados**. Nunca publique token, QR Code, chave SSH, telefone pessoal, conteúdo privado ou banco de dados. Não existe suporte oficial da RyzeAPI/Nous implícito neste projeto.
+The earlier `v0.14.0-beta.1` remains available. This release standardizes the public 1.0 beta line and documentation; the version change does not add pending features or establish native WhatsApp parity. Published release tags are preserved.
 
-Documentação externa: [Hermes plugins](https://hermes-agent.nousresearch.com/docs/developer-guide/plugins/) · [RyzeAPI mensagens](https://docs.ryzeapi.cloud/pt/api/messages/overview).
-- Gestão de instâncias: a criação no painel faz parte do fluxo de seleção com o canal pausado. O botão independente de criação e ferramentas administrativas de conversa ainda não entram nesta beta; não são apresentados como concluídos.
+## Development and support
+
+[Installation](docs/INSTALL.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Validation](docs/VALIDATION.md)
+
+Open an issue with your version, OS, reproduction steps and **sanitized logs**. Never publish tokens, QR codes, SSH keys, personal phone numbers, private conversations or databases. This project does not imply official support from RyzeAPI or Nous Research.
+
+Official documentation: [Hermes plugins](https://hermes-agent.nousresearch.com/docs/developer-guide/plugins/) · [RyzeAPI documentation](https://docs.ryzeapi.cloud/).

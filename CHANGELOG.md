@@ -1,18 +1,30 @@
 # Changelog
 
+## 1.0.0-beta.1 — 2026-09-15
+
+Standardize the public 1.0 beta release line. **Still a prerelease, not stable 1.0.0.** The previous v0.14.0-beta.1 tag and assets are preserved.
+
+- English primary README with a visible PT-BR language button.
+- Full installation guides in English and Brazilian Portuguese, including dependencies, secure deployment, pairing, firewall, both bundled skills, validation, troubleshooting, updates and removal.
+- Native WhatsApp replacement positioning, an explicit feature-parity comparison and a migration/rollback checklist.
+- English security, contribution and validation documentation.
+- Synchronized plugin, dashboard and bundled skill version metadata; documentation consistency tests.
+
+This is a documentation/packaging release. It does not add account-administration tools, an independent instance-creation flow, carousel validation or missing native WhatsApp features. The automatic installation mechanism for both skills is unchanged.
+
 ## 0.14.0-beta.1 — 2026-09-15
 
-Primeira distribuição pública do plugin comunitário por Neriton Dias.
+First public distribution of the community plugin by Neriton Dias.
 
-- Plugin e painel independentes do domínio/infraestrutura do autor.
-- Duas skills, ryzeapi e ryzeapi-painel, registradas e instaladas automaticamente ao carregar o plugin habilitado.
-- Atualização de skills gerenciadas com backup e preservação de edições/conflitos locais.
-- Configurador de origem pública, webhook, porta e serviço fora do código.
-- 14 ferramentas nativas de envio, firewall de contatos/grupos, arquivo passivo, buffer e eco opcional de transcrição.
-- WebSocket permanente com webhook de contingência, fila persistente e deduplicação.
-- Correlação de botões/listas para o formato observado de retorno, com escopo por instância/chat e validade.
-- Testes, documentação de instalação/segurança e licença MIT.
+- Plugin/dashboard independent of the author's domain and infrastructure.
+- Two skills, ryzeapi and ryzeapi-painel, registered and installed automatically when the enabled plugin loads.
+- Managed skill updates with backups and preservation of local edits/conflicts.
+- External configuration of public origin, webhook, listener port and service.
+- 14 native sending tools, contact/group firewall, passive archives, buffering and optional transcript echo.
+- Persistent WebSocket with webhook fallback, persistent queue and deduplication.
+- Button/list correlation for observed reply formats, scoped to instance/chat with expiry.
+- Tests, installation/security documentation and MIT license.
 
-### Limitações declaradas
+### Declared limitations
 
-Carrosséis e alguns retornos interativos ainda exigem validação real adicional. As skills incluem o mapa de todas as famílias RyzeAPI, mas a cobertura executável não abrange todos os endpoints. Gestão direta de conta pelo chat e novo fluxo independente de criação no painel continuam pendentes. Esta beta não inclui código experimental desses fluxos.
+Carousels and some interactive returns need additional real-world validation. Skills map all RyzeAPI endpoint families, but executable coverage is not complete. Direct account management through chat and an independent dashboard create-instance flow remain pending; their experimental code is not included.

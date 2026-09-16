@@ -1,24 +1,26 @@
-# Segurança
+# Security
 
-Não publique segredos em issues, discussões, prints ou pull requests. Tokens de conta/instância, QR/pairing codes, chaves, bancos de dados e conteúdo de conversas não pertencem ao repositório.
+Never post secrets in issues, discussions, screenshots or pull requests. Account/instance tokens, QR/pairing codes, keys, databases and conversations do not belong in this repository.
 
-Para vulnerabilidades, use o relato privado de segurança do GitHub quando disponível; se indisponível, abra somente uma solicitação de contato, sem detalhes exploráveis ou dados sensíveis. Nenhum SLA de resposta é prometido para esta beta comunitária.
+Report vulnerabilities through [GitHub private vulnerability reporting](https://github.com/NeritonDias/hermes-ryzeapi/security/advisories/new). If unavailable, open only a request for private contact without exploitable details or sensitive data. This community beta does not promise a response SLA.
 
-## Limites de confiança
+## Trust boundaries
 
-- O plugin roda com as permissões do Hermes; não é uma sandbox.
-- O dashboard requer autenticação externa/nativa. Origin/CSRF não substitui login.
-- A ferramenta aplica firewall de destinatários. Isso não restringe todo terminal/navegador do agente; use ferramentas mínimas e grupos confiáveis.
-- Permitir todos os membros de um grupo a acionar a IA pode expor ferramentas do agente. Conteúdo de mensagens/anexos não deve alterar instruções ou privilégios.
-- Status usa a audiência do WhatsApp e não o firewall de contatos, exigindo confirmação específica. PIX apenas apresenta chave; não realiza pagamentos.
-- Credenciais e estado ficam no perfil privado, não no diretório público do plugin.
-- Webhook valida segredo e escopo; listener é loopback. Publique só sua rota necessária, nunca endpoints administrativos.
-- POST incerto não é repetido automaticamente. Não há garantia de exactly-once.
+- The plugin runs with Hermes permissions; it is not a sandbox.
+- Dashboard authentication is required. Origin/CSRF checks do not replace login.
+- Sending tools enforce recipient policies. They do not constrain every terminal/browser capability of the agent; enable minimal tools and use trusted groups.
+- Allowing every group member to trigger the AI exposes its enabled tools. Messages and attachments must not change instructions or privileges.
+- Status uses the WhatsApp audience, not the contact firewall, and requires specific authorization. PIX only displays a key; it does not transfer money.
+- Credentials and state belong to the private profile, not the public plugin directory.
+- The webhook checks its secret and scope; its listener binds to loopback. Publish only the required event route, never administrative endpoints.
+- Uncertain POST requests are not automatically retried. Exactly-once delivery is not guaranteed.
 
-## Dados e retenção
+## Data and retention
 
-Arquivos de grupos são privados, criados após atividade permitida e não têm exclusão automática. O administrador decide base de autorização, transparência aos participantes e retenção. Eles contêm mensagens, identificação disponível e mudanças de membros, não cópia integral dos anexos.
+Private group archives are created after permitted activity and are not deleted automatically. Administrators are responsible for authorization, participant transparency and retention. Archives contain messages, available sender identifiers and membership changes, not complete copies of media attachments.
 
-Cache de mídia, fila, métricas e correlações têm políticas próprias implementadas no código. Operações/recibos não são prova de entrega ao usuário. Backups também podem conter dados sensíveis: mantenha acesso restrito.
+Media cache, queues, metrics and correlations have their own policies in the code. Operation records/receipts do not prove that a person received a message. Backups can also contain sensitive data; restrict their access.
 
-As duas skills são instaladas automaticamente ao carregar o plugin habilitado. Cópias locais alteradas não são sobrescritas; isso evita perda de personalizações, mas cabe ao operador resolver conflitos de atualização.
+Both skills are installed when the enabled plugin loads. Modified local copies are preserved; operators must resolve upgrade conflicts.
+
+For setup instructions in Portuguese, see [Instalação e operação](docs/INSTALL.pt-BR.md).

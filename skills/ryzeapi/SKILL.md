@@ -1,7 +1,7 @@
 ---
 name: ryzeapi
 description: "Operar WhatsApp: mensagens, instâncias e conta via RyzeAPI."
-version: 0.14.0
+version: 1.0.0-beta.1
 author: Neriton Dias
 license: MIT
 metadata:

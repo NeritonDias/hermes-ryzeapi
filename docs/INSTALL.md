@@ -1,44 +1,48 @@
-# Instalação e operação
+# Installation and operation
 
-## Pré-requisitos
+[![English](https://img.shields.io/badge/Language-English-196b62)](INSTALL.md) [![Português (Brasil)](https://img.shields.io/badge/Idioma-PT--BR-196b62)](INSTALL.pt-BR.md)
 
-- Linux, Python 3.12+ e Hermes Agent já instalado/configurado com seu provedor de modelo.
-- Gateway e dashboard no mesmo usuário e perfil Hermes. Suporte inicial a systemd de usuário.
-- Conta RyzeAPI, cota disponível e WhatsApp autorizado para pareamento.
-- Dashboard autenticado e webhook público HTTPS. Domínios, portas de borda, certificados e autenticação são responsabilidade da sua infraestrutura.
+[Back to README](../README.md) · Distribution **1.0.0-beta.1**.
 
-Base testada: Hermes commit a982d2c882ce14aca6e98873b32d3dce8a496a27. Este plugin não instala modelos, não fornece hospedagem e não usa uma conta do autor.
+## Prerequisites
 
-## Instalar
+- Linux, Python 3.12+, and Hermes Agent installed and configured with your model provider.
+- Gateway and dashboard running under the same user and Hermes profile. Initial support targets user-level systemd.
+- Your own RyzeAPI account, available instance quota and an authorized WhatsApp account to pair.
+- An authenticated dashboard and a public HTTPS webhook. You provide domains, edge routing, certificates and authentication.
 
-Revise o código e permissões: um plugin Python roda com acesso do processo Hermes.
+Tested Hermes baseline: `a982d2c882ce14aca6e98873b32d3dce8a496a27`. This plugin does not install models, provide hosting or use the author's account.
+
+## Install
+
+Review code and permissions first: a Python plugin runs with the Hermes process's access.
 
 ```bash
 hermes plugins install NeritonDias/hermes-ryzeapi --no-enable
 hermes plugins list
+```
+
+The installed directory is `plugins/ryzeapi` in your active profile, usually `~/.hermes/plugins/ryzeapi`, regardless of the repository name. Replace `/path/to/profile` below with that profile. **Python dependencies are not installed automatically on the tested Hermes baseline.** Use the Python interpreter belonging to your Hermes environment, not a global Python:
+
+```bash
+python -m pip install -r /path/to/profile/plugins/ryzeapi/requirements.txt
+hermes plugins doctor /path/to/profile/plugins/ryzeapi --ci
+hermes plugins compat /path/to/profile/plugins/ryzeapi
 hermes plugins enable ryzeapi
 ```
 
-O diretório instalado é plugins/ryzeapi no perfil ativo (normalmente ~/.hermes/plugins/ryzeapi), independentemente do nome do repositório. Use esse diretório nos exemplos abaixo. Se precisar instalar dependências manualmente, use o Python do ambiente Hermes, não o Python global:
+Dependencies are declared in the manifest. Do not ignore environment conflicts; use an isolated Hermes installation/profile before upgrading.
+
+The native Hermes scanner may report **CAUTION** for synthetic test tokens, invalid security-test paths and test/CI commands. Review the findings; the documented fixtures are not real credentials. Accept interactively only after trusting the reviewed code. For reviewed automated installation, `--force` accepts caution findings; never use it to bypass unknown findings or a dangerous verdict.
+
+On the first load of the enabled plugin, `ryzeapi` and `ryzeapi-painel` are installed into the profile's `skills/` directory and registered under the plugin namespace. Open a new session and check `skills_list`. Installing with `--no-enable` leaves the plugin inactive until enabled.
+
+## Configure deployment
+
+Run `scripts/configure.py` with the Hermes Python interpreter. It writes only non-secret deployment options to the profile's `ryzeapi/deployment.json`, with mode 0600:
 
 ```bash
-python -m pip install -r /caminho/do/perfil/plugins/ryzeapi/requirements.txt
-hermes plugins doctor /caminho/do/perfil/plugins/ryzeapi --ci
-hermes plugins compat /caminho/do/perfil/plugins/ryzeapi
-```
-
-O manifesto declara as dependências. Não ignore conflitos com seu ambiente; isole um perfil/instalação antes de atualizar.
-
-O scanner nativo Hermes pode emitir CAUTION nesta beta por fixtures de testes com tokens sintéticos/caminhos inválidos e pelos comandos de teste/CI. Revise os achados: não há credenciais reais nesses exemplos. Em terminal interativo, aceite somente se confiar no código revisado; para instalação automatizada revisada, --force aceita esse aviso de cautela. Não use isso para ignorar achados desconhecidos; veredito dangerous não deve ser contornado.
-
-Na primeira carga do plugin habilitado, ryzeapi e ryzeapi-painel são copiadas de modo gerenciado para skills/ do perfil, e registradas também sob namespace. Abra uma nova sessão: skills_list deve listar ambas. Instalar com --no-enable deixa o código inativo até você habilitá-lo.
-
-## Configurar a publicação
-
-Use scripts/configure.py com o Python Hermes. Ele grava somente opções não secretas em ryzeapi/deployment.json do perfil, modo 0600:
-
-```bash
-python /caminho/do/perfil/plugins/ryzeapi/scripts/configure.py \
+python /path/to/profile/plugins/ryzeapi/scripts/configure.py \
   --public-origin https://ia.example.com \
   --webhook-url https://hooks.example.com/ryzeapi/events \
   --listener-port 9120 \
@@ -47,59 +51,103 @@ python /caminho/do/perfil/plugins/ryzeapi/scripts/configure.py \
   --check
 ```
 
-Substitua os valores de exemplo; depois remova --check para gravar. Reinicie dashboard/gateway em janela ociosa para aplicar deployment.json. O nome de serviço deve ser o serviço de usuário real do gateway, não um comando shell.
+Replace the example values, then remove `--check` to save. Restart dashboard/gateway during an idle window to apply deployment configuration. The service name must be your actual gateway's user-systemd service, not a shell command. This script does not provision DNS, TLS, proxy rules or systemd units.
 
-Requisitos do proxy:
+Proxy requirements:
 
-- O painel fica atrás de autenticação, por exemplo autenticação nativa Hermes ou provedor de acesso no proxy. Os cabeçalhos Origin/x-ryze-ui usados pelo plugin protegem a requisição, mas NÃO autenticam o usuário.
-- Preserve o Origin público configurado e repasse o tráfego do dashboard ao seu upstream local.
-- Publique exclusivamente POST /ryzeapi/events do listener loopback configurado, com HTTPS e sem remover o cabeçalho Authorization. A RyzeAPI enviará o segredo configurado pelo plugin.
-- Não coloque desafio interativo de login na rota de webhook. Não exponha /health, /maintenance ou a porta inteira do listener; não exponha bancos/configurações.
-- Permita saída HTTPS e WSS à RyzeAPI. O listener não deve escutar na interface pública.
+- Keep the dashboard behind authentication, such as Hermes authentication or an access provider at the proxy. The plugin's Origin/`x-ryze-ui` checks do **not** authenticate users.
+- Preserve the configured public Origin and route dashboard requests to its local upstream.
+- Publish only **POST /ryzeapi/events** from the configured loopback listener, over HTTPS, preserving the Authorization header. RyzeAPI sends the secret configured by the plugin.
+- Do not put interactive login challenges on the webhook route. Do not expose `/health`, `/maintenance`, the whole listener port, databases or configuration files.
+- Allow outbound HTTPS and WSS to RyzeAPI. The listener must not bind to a public interface.
 
-Você pode usar qualquer proxy/infraestrutura que cumpra esse contrato. Oracle e Cloudflare não são dependências. Não desative a autenticação do painel para fazer o webhook funcionar.
+Any infrastructure meeting this contract can be used; Oracle and Cloudflare are not dependencies. Do not disable dashboard authentication to make the webhook work.
 
-## Conta, WhatsApp e firewall
+## Account, WhatsApp and firewall
 
-1. Abra a aba RyzeAPI no dashboard autenticado. Informe TokenAccount para listar/criar instâncias, ou TokenInstance para uma instância existente. Segredos ficam fora do código em ryzeapi/settings.json.
-2. Escolha a instância explicitamente. Na beta, criar está no fluxo de criação/seleção enquanto o canal está pausado; não é uma operação independente com canal ativo.
-3. Gere QR/código em superfície privada e pareie o aparelho. Aguarde estado conectado, não apenas QR gerado.
-4. Configure contatos autorizados. Receber permite resposta/envio; Comandar permite execução. Nenhum contato é liberado por padrão.
-5. Se usar grupos, sincronize o catálogo, selecione e confirme políticas por grupo. Só ouvir é arquivo passivo; todos os membros em modo responder podem acionar ferramentas do agente — use apenas grupos confiáveis.
-6. Configure buffer e eco de transcrição. Ative o canal; confira WS e webhook, saúde do consumidor e permissões.
-7. Faça teste real com remetente/destino autorizados e verifique entrega e rejeição de remetentes não autorizados.
+1. Open RyzeAPI in the authenticated dashboard. Enter a TokenAccount for listing/creating instances, or TokenInstance for an existing instance. Secrets are stored privately in `ryzeapi/settings.json`, outside the plugin code.
+2. Select the instance explicitly. In this beta, creation is part of the create/select flow while the channel is paused, not an independent action while it is active.
+3. Generate a QR/pairing code in a private surface and pair your device. Wait for a confirmed connected state, not merely a generated QR.
+4. Configure allowed contacts. **Receber** permits replies/sends; **Comandar** permits execution. No contact is allowed by default.
+5. For groups, synchronize the catalog, select groups and explicitly confirm each policy. **Só ouvir** archives passively. Allowing all group members to trigger the agent gives them access to its enabled tools; use trusted groups.
+6. Configure the buffer and transcript echo. Enable the channel; verify WebSocket/webhook, consumer health and permissions.
+7. Run an authorized real test and verify both successful delivery and rejection of unauthorized senders.
 
-Se ferramentas não aparecerem no chat, confira o toolset ryzeapi na configuração de ferramentas daquela sessão/perfil. Skills não habilitam ferramentas ou contornam autorização.
+If chat tools are missing, check the `ryzeapi` toolset in that session/profile's tool configuration. Skills do not enable tools or bypass authorization. Dashboard labels currently use Brazilian Portuguese.
 
-## Validação
+## Validate the installation
 
-- Plugins list: ryzeapi carregado, sem erro.
-- Nova sessão: ryzeapi e ryzeapi-painel em skills_list; referências abrindo com skill_view.
-- Verificação reproduzível, com o Python Hermes: python /caminho/do/perfil/plugins/ryzeapi/scripts/verify_install.py (sem chamadas à RyzeAPI).
-- Painel: estado conectado confirmado e consumidor saudável; WS conectado sozinho não basta.
-- Teste dry_run de envio: valida sem POST externo.
-- Teste real autorizado: aceite, ID de mensagem e recibo/renderização conforme o formato. Não reenviar automaticamente em timeout.
+- `hermes plugins list`: RyzeAPI loaded without errors.
+- New session: both skills in `skills_list`; references readable through `skill_view`.
+- Run the reproducible check with the Hermes Python interpreter:
 
-## Atualização e remoção
+```bash
+python /path/to/profile/plugins/ryzeapi/scripts/verify_install.py
+```
 
-Faça backup privado de configuração e dados antes de atualizar. Pause o canal e espere tarefas em andamento terminarem; pausa não desfaz tarefas já aceitas. Não copie um banco antigo por cima do atual em rollback.
+The verifier checks both skills and 14 registered tools without calling RyzeAPI. It does not prove live connectivity.
 
-Atualizações nativas:
+- Dashboard: connected account and healthy consumer; a connected WebSocket alone is insufficient.
+- A `dry_run` send validates without an external POST.
+- An authorized real send should be checked for acceptance, message ID and delivery/rendering appropriate to the format. Do not automatically retry on a timeout.
+
+## Migrating from built-in WhatsApp
+
+The plugin can replace Hermes' built-in Baileys-based channel for supported workflows without changing Hermes core. It is not Meta's official WhatsApp Business Cloud API adapter. **Complete feature parity is not promised in this beta.**
+
+| Capability | This plugin |
+| --- | --- |
+| Conversations, images, documents and audio | Adapter implemented; STT depends on Hermes and media limits apply. |
+| Groups and access control | Own policies, including passive archives, mentions and authorized members. Reconfigure permissions. |
+| Sending polls | Tool available; returned votes and automatic clarification-as-poll do not have complete parity. |
+| Quoted attachments | Complete file recovery is not validated. |
+| Streaming edits, read receipts and self-chat mode | Not claimed equivalent; validate required workflows before switching. |
+| Existing sessions, allowlists and cron destinations | Not automatically migrated from `whatsapp` to `ryzeapi`. |
+
+This comparison uses the [official built-in WhatsApp documentation](https://hermes-agent.nousresearch.com/docs/user-guide/messaging/whatsapp), consulted on September 15, 2026, and this release's code. Recheck when upgrading Hermes.
+
+1. Make a private configuration backup and preserve the native session credentials. Never share that backup.
+2. Configure RyzeAPI and its firewall with the channel paused. Native session credentials are not imported; pair through RyzeAPI.
+3. During an idle window, disable the native WhatsApp channel in gateway configuration. If enabled through `.env`, set `WHATSAPP_ENABLED=false`; check profile overrides too. Do not disable Telegram or unrelated channels.
+4. Enable RyzeAPI and restart the necessary processes. Avoid two adapters responding through the same WhatsApp account.
+5. Explicitly review home-channel/cron destinations and permissions for `ryzeapi`. Test the DMs, groups, attachments, voice and scheduled tasks you actually use.
+6. To roll back, pause/disable RyzeAPI before re-enabling the native channel. Do not overwrite new SQLite queues with old backups or repeat sends with uncertain outcomes.
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| Missing dashboard tab or tools | Same user/profile, enabled plugin, dependencies, Doctor and dashboard/gateway restart. |
+| Missing skills | Plugin loaded, new session and conflict warnings; run `scripts/verify_install.py`. |
+| Connected, but no reply | Consumer health, selected instance, firewall and group mention policy. WebSocket connectivity does not prove processing. |
+| No webhook events | Exact HTTPS route, preserved Authorization and no interactive authentication on that route only. |
+| Expired QR | Generate a fresh QR privately; never post a screenshot. |
+| Accepted send, no visible message | Inspect message ID, receipts and format limitations. Do not automatically resend after timeout. |
+
+Share sanitized logs only. Never publish `settings.json`, QR codes, tokens, databases or conversations.
+
+## Updates and removal
+
+Back up configuration and data privately before updating. Pause the channel and wait for in-flight tasks; pausing does not cancel tasks already accepted. Do not overwrite a current database with an old one during rollback.
+
+Native update:
 
 ```bash
 hermes plugins update ryzeapi
-hermes plugins doctor /caminho/do/perfil/plugins/ryzeapi --ci
+python -m pip install -r /path/to/profile/plugins/ryzeapi/requirements.txt
+hermes plugins doctor /path/to/profile/plugins/ryzeapi --ci
+hermes plugins compat /path/to/profile/plugins/ryzeapi
 ```
 
-Reinicie os processos que carregam o plugin em janela ociosa; confira as skills em sessão nova. Para instalar por revisão imutável, o instalador aceita --ref com SHA completo de 40 caracteres; use o SHA associado à release, não uma tag como se fosse SHA.
+Restart processes that load the plugin during an idle window and inspect both skills in a new session. These commands follow your installed source; they are not a guarantee of a pinned release. For an immutable installation, the installer accepts `--ref` with a full 40-character commit SHA. Use the commit associated with the release, not a tag name in place of that SHA.
 
-O instalador de skills salva hashes de propriedade em ryzeapi/skill-install.json. Atualiza cópias inalteradas e guarda a versão anterior em ryzeapi/skill-backups/. Alterações locais e arquivos extras geram conflito: são preservados. Revise/guarde suas personalizações antes de retirar a cópia conflitante; ao recarregar, o plugin poderá instalar a versão empacotada. As versões qualificadas continuam acessíveis sem substituir sua edição.
+The managed skill installer stores ownership hashes in `ryzeapi/skill-install.json`. Unmodified copies are updated with backups under `ryzeapi/skill-backups/`. Local edits and extra files create a conflict and are preserved. Review/back up your customizations before removing a conflicting copy; reloading can then install the bundled version. Namespaced versions remain available without replacing your edits.
 
-Desabilite o plugin antes de remover:
+Disable before removing:
 
 ```bash
 hermes plugins disable ryzeapi
 hermes plugins uninstall ryzeapi
 ```
 
-Confirme as opções mostradas pela sua versão Hermes. O plugin não apaga sua conta RyzeAPI, aparelho, dados ou cópias das skills ao ser desabilitado/removido. Remova ryzeapi e ryzeapi-painel pelo gerenciador de skills se desejar; preserve antes suas personalizações. Arquivos privados de conversas/SQLite precisam de política de retenção própria.
+Check prompts/options in your installed Hermes version. Disabling/removing the plugin does not delete your RyzeAPI account, paired device, private data or exported skills. Remove `ryzeapi` and `ryzeapi-painel` through the skill manager if desired, after preserving customizations. Conversation archives and SQLite files need your own retention policy.
