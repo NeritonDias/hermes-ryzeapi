@@ -16,7 +16,7 @@ Date: September 15, 2026. Hermes commit `a982d2c882ce14aca6e98873b32d3dce8a496a2
 
 The native Hermes scanner reported CAUTION for reviewed synthetic fixtures and test/CI commands. Findings included test tokens, intentionally invalid paths, loopback addresses and test execution/dependency installation. Tests were not removed to hide warnings. Review the current report before accepting installation.
 
-## 1.0.0-beta.1 scope
+## Corrected 0.14.0-beta.1 package
 
 This release changes documentation and version metadata, not the runtime implementation. It adds automated checks for version consistency, bilingual documentation and local links. Current automated results are published under [GitHub Actions](https://github.com/NeritonDias/hermes-ryzeapi/actions/workflows/test.yml).
 

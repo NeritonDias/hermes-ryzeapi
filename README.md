@@ -8,7 +8,7 @@ A community WhatsApp integration for **Hermes Agent** with a web dashboard, two 
 
 **Author: Neriton Dias** · [Instagram @neritondias](https://www.instagram.com/neritondias/) · [MIT license](LICENSE)
 
-**Public beta: 1.0.0-beta.1.** Independent project, not officially affiliated with Nous Research, RyzeAPI or WhatsApp. Bring your own RyzeAPI account and configured Hermes installation. No credentials, hosting or model subscription are included. Dashboard labels and bundled skill instructions currently use Brazilian Portuguese; the README and installation guide are bilingual.
+**Public beta: 0.14.0-beta.1.** Independent project, not officially affiliated with Nous Research, RyzeAPI or WhatsApp. Bring your own RyzeAPI account and configured Hermes installation. No credentials, hosting or model subscription are included. Dashboard labels and bundled skill instructions currently use Brazilian Portuguese; the README and installation guide are bilingual.
 
 ## An alternative to the built-in WhatsApp channel
 
@@ -94,9 +94,7 @@ Remove `dry_run` only for an authorized destination and content. An `accepted` r
 
 ## Versions and releases
 
-Current version: **[v1.0.0-beta.1](https://github.com/NeritonDias/hermes-ryzeapi/releases/tag/v1.0.0-beta.1)**. GitHub's “1 tag” label is a count, not a version number. The `beta.1` suffix marks a prerelease, **not stable 1.0.0**.
-
-The earlier `v0.14.0-beta.1` remains available. This release standardizes the public 1.0 beta line and documentation; the version change does not add pending features or establish native WhatsApp parity.
+Current version: **[v0.14.0-beta.1](https://github.com/NeritonDias/hermes-ryzeapi/releases/tag/v0.14.0-beta.1)**. This is a **public beta**, not a stability or full-parity guarantee. The GitHub release is designated Latest for visibility; the version name and release notes retain the beta warning.
 
 Privacy maintenance: the initial public history and old archive were sanitized to replace a partially anonymized test fixture. Commit hashes and archive checksums changed; use a fresh clone/download if you obtained the initial release.
 

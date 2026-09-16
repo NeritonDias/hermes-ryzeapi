@@ -8,7 +8,7 @@ Plugin comunitário de WhatsApp para **Hermes Agent**, com painel web, duas skil
 
 **Autor: Neriton Dias** · [Instagram @neritondias](https://www.instagram.com/neritondias/) · [MIT](LICENSE)
 
-**Beta pública: 1.0.0-beta.1.** Projeto independente, sem afiliação oficial com Nous Research, RyzeAPI ou WhatsApp. Requer sua própria conta RyzeAPI e um Hermes configurado; este repositório não inclui credenciais, hospedagem nem assinatura de modelo. Painel e instruções das skills estão em PT-BR; README e instalação têm versões em inglês e português.
+**Beta pública: 0.14.0-beta.1.** Projeto independente, sem afiliação oficial com Nous Research, RyzeAPI ou WhatsApp. Requer sua própria conta RyzeAPI e um Hermes configurado; este repositório não inclui credenciais, hospedagem nem assinatura de modelo. Painel e instruções das skills estão em PT-BR; README e instalação têm versões em inglês e português.
 
 ## Alternativa ao WhatsApp nativo do Hermes
 
@@ -46,7 +46,7 @@ Para fixar uma versão, use `--ref` com o SHA completo da release. Para atualiza
 
 ## Versões e releases
 
-Versão atual: **[v1.0.0-beta.1](https://github.com/NeritonDias/hermes-ryzeapi/releases/tag/v1.0.0-beta.1)**. `1 tag` no GitHub significa uma tag existente, não versão 1. O sufixo `beta.1` identifica uma pré-release, não uma versão 1.0.0 estável. A antiga `v0.14.0-beta.1` permanece disponível; a nova numeração não adiciona funcionalidades pendentes nem certifica paridade com o WhatsApp nativo.
+Versão atual: **[v0.14.0-beta.1](https://github.com/NeritonDias/hermes-ryzeapi/releases/tag/v0.14.0-beta.1)**. É uma **beta pública**, sem garantia de estabilidade ou paridade completa. A release no GitHub está marcada como Latest para aparecer no resumo; o nome e as notas mantêm o aviso de beta.
 
 ## Duas skills instaladas automaticamente
 

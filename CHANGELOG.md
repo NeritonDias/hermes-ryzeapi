@@ -1,8 +1,12 @@
 # Changelog
 
-## 1.0.0-beta.1 — 2026-09-15
+## 0.14.0-beta.1 — 2026-09-15
 
-Standardize the public 1.0 beta release line. **Still a prerelease, not stable 1.0.0.** The previous v0.14.0-beta.1 tag name is retained; its history and archive were rebuilt during owner-authorized privacy maintenance. Use a fresh clone/download; previous hashes/checksums no longer identify the sanitized release.
+The public version remains **0.14.0-beta.1**. A mistakenly numbered release was withdrawn. Version metadata, documentation, tag and archive have been corrected together. The release is displayed as Latest on GitHub for visibility, but remains explicitly labeled a public beta.
+
+The archive was rebuilt after owner-authorized privacy maintenance and this version correction. Use a fresh clone/download; previous hashes/checksums no longer identify the current package.
+
+### Documentation and packaging corrections
 
 - English primary README with a visible PT-BR language button.
 - Full installation guides in English and Brazilian Portuguese, including dependencies, secure deployment, pairing, firewall, both bundled skills, validation, troubleshooting, updates and removal.
@@ -13,7 +17,7 @@ Standardize the public 1.0 beta release line. **Still a prerelease, not stable 1
 
 This is a documentation/packaging release. It does not add account-administration tools, an independent instance-creation flow, carousel validation or missing native WhatsApp features. The automatic installation mechanism for both skills is unchanged.
 
-## 0.14.0-beta.1 — 2026-09-15
+### Initial feature set
 
 First public distribution of the community plugin by Neriton Dias.
 

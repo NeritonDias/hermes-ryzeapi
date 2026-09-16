@@ -2,7 +2,7 @@
 
 [![English](https://img.shields.io/badge/Language-English-196b62)](INSTALL.md) [![Português (Brasil)](https://img.shields.io/badge/Idioma-PT--BR-196b62)](INSTALL.pt-BR.md)
 
-[Back to README](../README.md) · Distribution **1.0.0-beta.1**.
+[Back to README](../README.md) · Distribution **0.14.0-beta.1**.
 
 ## Prerequisites
 

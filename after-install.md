@@ -1,6 +1,6 @@
 # RyzeAPI installed
 
-Author: Neriton Dias · Instagram @neritondias · beta 1.0.0-beta.1.
+Author: Neriton Dias · Instagram @neritondias · beta 0.14.0-beta.1.
 
 1. Read README.md and docs/INSTALL.md. Português: README.pt-BR.md and docs/INSTALL.pt-BR.md.
 2. Install requirements.txt with the Hermes Python interpreter, configure dashboard authentication and HTTPS webhook routing, then enable ryzeapi.
