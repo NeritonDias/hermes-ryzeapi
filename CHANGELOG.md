@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.14.0 — 2026-11-24
+
+Stable Hermes v0.23.4 release. The Webapp and Dashboard share a responsive control panel. Coolify deployments use an internal listener on 9131 and explicit gateway redeploy. The controller reconciles webhook ownership, and outbound file reads are confined to the profile attachment directory. Inbound and outbound idempotency remain durable.
+
+
 ## 0.14.0-beta.1 — 2026-09-15
 
 The public version remains **0.14.0-beta.1**. A mistakenly numbered release was withdrawn. Version metadata, documentation, tag and archive have been corrected together. The release is displayed as Latest on GitHub for visibility, but remains explicitly labeled a public beta.

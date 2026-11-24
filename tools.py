@@ -1,4 +1,5 @@
 """Native Hermes plugin tools. Credentials are never arguments or model results."""
+from contextlib import closing
 import asyncio
 import base64
 import functools
@@ -9,8 +10,9 @@ import sqlite3
 import time
 from pathlib import Path
 from .outbound import KINDS, payload_schema, prepare, obj, string, BOOL, validate
-from .settings import configured, directory
-from .core import allowed_numbers, authorized_phone, MAX_MEDIA
+from .settings import configured, directory, inbox_path
+from .core import allowed_numbers, authorized_phone
+from .attachments import read_attachment
 from .groups import GroupStore, group_id
 from .client import RyzeClient, RyzeError
 from .interactions import InteractionStore
@@ -41,7 +43,7 @@ def schema(kind):
         required.append('confirm_status_broadcast')
     else:properties['number']=string('Recipient phone or full group JID. Omit only to reply in the current RyzeAPI chat.',100)
     if kind in ('media','sticker'):
-        properties['file_path']=string('Local attachment explicitly requested/selected by the user. Do not send credentials or private configuration files.',4096)
+        properties['file_path']=string('File in this profile’s workspace/attachments directory, selected by the user. Relative paths start in that directory.',4096)
         if kind=='sticker':properties['payload']['required']=[]
     return {'name':'ryzeapi_send_'+kind,'description':DESCRIPTIONS[kind]+' Respects the plugin firewall. Never auto-retry an uncertain send.',
             'parameters':obj(properties,required)}
@@ -77,9 +79,9 @@ def authorize(adapter,kind,number,origin,confirmed=False):
 def known_reference(adapter,mid,number):
     """Never quote/react across chats just because the ID belongs to this account."""
     from hermes_constants import get_hermes_home
-    path=get_hermes_home()/('ryzeapi-inbox-'+hashlib.sha256(adapter.instance.encode()).hexdigest()[:16]+'.db')
+    path=inbox_path(get_hermes_home(), adapter.instance)
     if path.exists():
-        with sqlite3.connect('file:'+str(path)+'?mode=ro',uri=True) as db:
+        with closing(sqlite3.connect('file:'+str(path)+'?mode=ro',uri=True)) as db:
             if db.execute('SELECT 1 FROM inbox WHERE id=? AND number=?',(mid,number)).fetchone():return True
             if db.execute('SELECT 1 FROM ryze_sent WHERE id=? AND number=?',(mid,number)).fetchone():return True
     if group_id(number):
@@ -129,14 +131,8 @@ async def execute(kind,args,*,origin=None):
         payload=dict(args['payload'])
         if args.get('file_path'):
             if any(k in payload for k in ('mediaUrl','mediaBase64','imageUrl')):raise ValueError('Choose file_path OR URL/base64, not both')
-            path=Path(args['file_path']).expanduser().resolve()
-            if not path.is_file() or not 0<path.stat().st_size<=MAX_MEDIA:raise ValueError('Local attachment missing or exceeds 8 MiB')
-            if any(part in ('.ssh','.oci','.aws') for part in path.parts) or path.name in ('.env','settings.json','auth.json','config.yaml'):
-                raise ValueError('Credential/configuration files cannot be sent as attachments')
-            def read_bounded():
-                with path.open('rb') as stream:return stream.read(MAX_MEDIA+1)
-            raw=await asyncio.to_thread(read_bounded)
-            if not raw or len(raw)>MAX_MEDIA:raise ValueError('Invalid attachment size')
+            path=Path(args['file_path'])
+            raw=await asyncio.to_thread(read_attachment, path)
             mime=mimetypes.guess_type(path.name)[0] or 'application/octet-stream'
             encoded=base64.b64encode(raw).decode()
             if kind=='sticker':
@@ -155,22 +151,19 @@ async def execute(kind,args,*,origin=None):
         ledger=SendLedger(adapter.instance,args['request_id'],kind,target,body)
         previous=ledger.claim()
         if previous:return previous
-        wire_payload=payload;choices=[]
+        wire_body=body;choices=[]
         if kind in ('buttons','list','carousel'):
             interactions=InteractionStore(directory(),adapter.instance)
-            wire_payload,choices=interactions.prepare(kind,payload,target)
+            wire_body,choices=interactions.prepare(kind,body,target)
         adapter.client=RyzeClient(adapter.instance,adapter.token)
-        result=await adapter.client.send_rich(kind,None if kind=='status' else target,wire_payload)
+        authorize(adapter,kind,number,origin,args.get('confirm_status_broadcast') is True)
+        result=await adapter.client.send_prepared(kind,wire_body,warnings)
         if interactions:interactions.accepted(choices,result['message_id'])
         ledger.finish(result)
         if kind!='status':adapter.record_sent(result['message_id'],target)
         return result
     except RyzeError as exc:
         return {'success':False,'status':'unconfirmed','retry_safe':False,'error':str(exc)}
-    except (ValueError,TypeError,KeyError,sqlite3.Error,OSError):
-        # Validation errors are returned by the outer handler without secrets;
-        # storage/OS details are not useful to the model and can contain paths.
-        raise
     finally:
         if interactions:interactions.close()
         if ledger:ledger.close()

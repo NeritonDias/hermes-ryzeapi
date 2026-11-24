@@ -32,3 +32,20 @@ jobs:
         run: hermes plugins doctor . --ci
       - name: Deprecated import compatibility
         run: hermes plugins compat .
+
+  official-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Test released Hermes image without production data
+        run: |
+          docker run --rm --network none --read-only --tmpfs /tmp:rw,mode=1777 \
+            --cap-drop ALL --security-opt no-new-privileges -v "$PWD:/src/ryzeapi:ro" \
+            -e HOME=/tmp -e HERMES_HOME=/tmp/profile -e HERMES_SOURCE=/opt/hermes \
+            -e PYTHONDONTWRITEBYTECODE=1 -w /src/ryzeapi --entrypoint bash \
+            nousresearch/hermes-agent@sha256:ef0650d523ee1b5ab32c779acabc446d9936869a9932591553688a62bcf0c42f \
+            -ec 'python scripts/build_ui.py --check && python scripts/test.py && python -m hermes_cli.main plugins doctor . --ci'

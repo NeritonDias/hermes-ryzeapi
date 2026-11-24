@@ -18,6 +18,8 @@ hermes plugins compat .
 
 The runner creates an isolated temporary profile and removes RYZEAPI_ variables. Tests use mocked responses; they do not send WhatsApp messages or create real instances. Skill-loader tests use native Hermes components.
 
+Edit the shared UI in `dashboard/panel.js` and `dashboard/dist/style.css`. Run `python scripts/build_ui.py` to generate both native entry points and `python scripts/build_ui.py --check` to verify the committed output.
+
 Separate visual checks live in `tests/test_ui_tasks.py` and `tests/test_ui_groups.py`. They need Playwright/Chromium and `RYZE_UI_HARNESS` pointing to `tests/ui_harness.jsx` compiled with React/ReactDOM through esbuild. `HERMES_SOURCE` identifies the checkout. The harness intercepts networking and uses synthetic fixtures; these checks do not prove real authentication or provider operations.
 
 ## Change guidelines

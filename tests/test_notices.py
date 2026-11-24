@@ -61,6 +61,7 @@ class NoticeTests(unittest.IsolatedAsyncioTestCase):
         runner=SimpleNamespace(config=config,
             async_session_store=SimpleNamespace(has_any_sessions=AsyncMock(return_value=True)),
             _adapter_for_source=lambda source:self.adapter,
+            _delivery_adapter_for=lambda source:self.adapter,
             _thread_metadata_for_source=lambda source:None)
         runner._deliver_platform_notice=partial(GatewayNotificationsMixin._deliver_platform_notice,runner)
         for destination,kind in ((GID,'group'),(OWNER,'dm')):

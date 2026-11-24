@@ -2,16 +2,16 @@
 
 [![English](https://img.shields.io/badge/Language-English-196b62)](INSTALL.md) [![Português (Brasil)](https://img.shields.io/badge/Idioma-PT--BR-196b62)](INSTALL.pt-BR.md)
 
-[Back to README](../README.md) · Distribution **0.14.0-beta.1**.
+[Back to README](../README.md) · Distribution **0.14.0**.
 
 ## Prerequisites
 
 - Linux, Python 3.12+, and Hermes Agent installed and configured with your model provider.
-- Gateway and dashboard running under the same user and Hermes profile. Initial support targets user-level systemd.
+- Gateway and dashboard running under the same user and Hermes profile. Coolify/s6 and user-level systemd are supported.
 - Your own RyzeAPI account, available instance quota and an authorized WhatsApp account to pair.
 - An authenticated dashboard and a public HTTPS webhook. You provide domains, edge routing, certificates and authentication.
 
-Tested Hermes baseline: `a982d2c882ce14aca6e98873b32d3dce8a496a27`. This plugin does not install models, provide hosting or use the author's account.
+Tested Hermes baseline: `8fc0374447313e276f6b9a2764bfc750190c966a`. This plugin does not install models, provide hosting or use the author's account.
 
 ## Install
 
@@ -22,9 +22,10 @@ hermes plugins install NeritonDias/hermes-ryzeapi --no-enable
 hermes plugins list
 ```
 
-The installed directory is `plugins/ryzeapi` in your active profile, usually `~/.hermes/plugins/ryzeapi`, regardless of the repository name. Replace `/path/to/profile` below with that profile. **Python dependencies are not installed automatically on the tested Hermes baseline.** Use the Python interpreter belonging to your Hermes environment, not a global Python:
+The installed directory is `plugins/ryzeapi` in your active profile, usually `~/.hermes/plugins/ryzeapi`, regardless of the repository name. Replace `/path/to/profile` below with that profile. The official Hermes v0.23.4 image supplies the supported dependencies. For custom environments, use the Hermes interpreter:
 
 ```bash
+# Custom Python environments only
 python -m pip install -r /path/to/profile/plugins/ryzeapi/requirements.txt
 hermes plugins doctor /path/to/profile/plugins/ryzeapi --ci
 hermes plugins compat /path/to/profile/plugins/ryzeapi
@@ -37,6 +38,14 @@ The native Hermes scanner may report **CAUTION** for synthetic test tokens, inva
 
 On the first load of the enabled plugin, `ryzeapi` and `ryzeapi-painel` are installed into the profile's `skills/` directory and registered under the plugin namespace. Open a new session and check `skills_list`. Installing with `--no-enable` leaves the plugin inactive until enabled.
 
+## Hermes Webapp and Coolify
+
+In **Capabilities → Plugins → Install from Git**, select the gateway profile and pin the reviewed commit. Enable Agent and Desktop. Open **RyzeAPI** in the left sidebar. Both interfaces share the same account, pairing, permissions, metrics and instance screens.
+
+Use the deployment command below with `--lifecycle coolify --listener-host 0.0.0.0 --owner-subject "$OIDC_SUB" --owner-issuer "$OIDC_ISS"` inside the gateway container. Use the authenticated owner's exact Hermes user ID and verified OIDC issuer. The management API refuses other identities. Keep port 9131 internal to the private proxy network, without a published host port. A single Traefik rule must match the dedicated webhook host, exact path `/ryzeapi/events` and method POST, targeting this gateway on port 9131. The Webapp stays on internal port 9120. See the [route template](traefik.example.yaml). Run the deployment script again to migrate a saved 9120 listener.
+
+After activation or a firewall change, redeploy only this gateway when prompted. Refresh state to confirm runtime health. Pause revokes local authorization immediately and disables the owned provider webhook. Retry **Reconciliar e pausar** after an uncertain provider response. Use a dedicated instance, label and profile. For local media place approved regular files under `$HERMES_HOME/workspace/attachments/`; pass a path relative to that directory.
+
 ## Configure deployment
 
 Run `scripts/configure.py` with the Hermes Python interpreter. It writes only non-secret deployment options to the profile's `ryzeapi/deployment.json`, with mode 0600:
@@ -45,13 +54,13 @@ Run `scripts/configure.py` with the Hermes Python interpreter. It writes only no
 python /path/to/profile/plugins/ryzeapi/scripts/configure.py \
   --public-origin https://ia.example.com \
   --webhook-url https://hooks.example.com/ryzeapi/events \
-  --listener-port 9120 \
+  --listener-port 9131 \
   --gateway-service hermes-gateway.service \
   --webhook-label hermes-ryzeapi \
   --check
 ```
 
-Replace the example values, then remove `--check` to save. Restart dashboard/gateway during an idle window to apply deployment configuration. The service name must be your actual gateway's user-systemd service, not a shell command. This script does not provision DNS, TLS, proxy rules or systemd units.
+Replace the example values, then remove `--check` to save. Restart dashboard/gateway during an idle window to apply deployment configuration. Only the systemd lifecycle uses the service name. For the hosted Webapp, use the Coolify flags above and the default Hermes in-process plugin API, which receives the verified OIDC subject and issuer. This script does not provision DNS, TLS, proxy rules or systemd units.
 
 Proxy requirements:
 
@@ -66,7 +75,7 @@ Any infrastructure meeting this contract can be used; Oracle and Cloudflare are 
 ## Account, WhatsApp and firewall
 
 1. Open RyzeAPI in the authenticated dashboard. Enter a TokenAccount for listing/creating instances, or TokenInstance for an existing instance. Secrets are stored privately in `ryzeapi/settings.json`, outside the plugin code.
-2. Select the instance explicitly. In this beta, creation is part of the create/select flow while the channel is paused, not an independent action while it is active.
+2. Select the instance explicitly. In this release, creation is part of the create/select flow while the channel is paused, not an independent action while it is active.
 3. Generate a QR/pairing code in a private surface and pair your device. Wait for a confirmed connected state, not merely a generated QR.
 4. Configure allowed contacts. **Receber** permits replies/sends; **Comandar** permits execution. No contact is allowed by default.
 5. For groups, synchronize the catalog, select groups and explicitly confirm each policy. **Só ouvir** archives passively. Allowing all group members to trigger the agent gives them access to its enabled tools; use trusted groups.
@@ -93,7 +102,7 @@ The verifier checks both skills and 14 registered tools without calling RyzeAPI.
 
 ## Migrating from built-in WhatsApp
 
-The plugin can replace Hermes' built-in Baileys-based channel for supported workflows without changing Hermes core. It is not Meta's official WhatsApp Business Cloud API adapter. **Complete feature parity is not promised in this beta.**
+The plugin can replace Hermes' built-in Baileys-based channel for supported workflows without changing Hermes core. It is not Meta's official WhatsApp Business Cloud API adapter. **Complete feature parity is not promised in this release.**
 
 | Capability | This plugin |
 | --- | --- |
@@ -134,6 +143,7 @@ Native update:
 
 ```bash
 hermes plugins update ryzeapi
+# Custom Python environments only
 python -m pip install -r /path/to/profile/plugins/ryzeapi/requirements.txt
 hermes plugins doctor /path/to/profile/plugins/ryzeapi --ci
 hermes plugins compat /path/to/profile/plugins/ryzeapi

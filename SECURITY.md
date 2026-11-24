@@ -2,7 +2,7 @@
 
 Never post secrets in issues, discussions, screenshots or pull requests. Account/instance tokens, QR/pairing codes, keys, databases and conversations do not belong in this repository.
 
-Report vulnerabilities through [GitHub private vulnerability reporting](https://github.com/NeritonDias/hermes-ryzeapi/security/advisories/new). If unavailable, open only a request for private contact without exploitable details or sensitive data. This community beta does not promise a response SLA.
+Report vulnerabilities through [GitHub private vulnerability reporting](https://github.com/NeritonDias/hermes-ryzeapi/security/advisories/new). If unavailable, open only a request for private contact without exploitable details or sensitive data. This community project does not promise a response SLA.
 
 ## Trust boundaries
 

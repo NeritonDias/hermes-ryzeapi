@@ -139,7 +139,9 @@ class RealtimeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_send_media_firewall_and_native_attachment(self):
         self.adapter.client=AsyncMock();self.adapter.client.send_media.return_value='media-id'
-        path=Path(self.temp.name)/'note.txt';path.write_text('fixture')
+        from ryzeapi.attachments import attachment_root
+        folder=attachment_root();folder.mkdir(parents=True, exist_ok=True)
+        path=folder/'note.txt';path.write_text('fixture')
         self.assertFalse((await self.adapter.send_document('5511888888888',str(path))).success)
         self.adapter.client.send_media.assert_not_awaited()
         self.assertTrue((await self.adapter.send_document(OWNER,str(path))).success)

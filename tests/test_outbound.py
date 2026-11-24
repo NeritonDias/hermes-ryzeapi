@@ -139,7 +139,7 @@ class ToolTests(unittest.IsolatedAsyncioTestCase):
         self.adapter.group_store.sync([{'groupJid':GID,'name':'Synthetic group'}])
         self.adapter.group_store.configure(GID,'respond','mentions','all')
         self.factory_patch=patch('ryzeapi.adapter.RyzeAdapter',return_value=self.adapter);self.factory_patch.start()
-        self.client=AsyncMock();self.client.send_rich.return_value={'success':True,'message_id':'sent-tool','status':'accepted','delivered':False}
+        self.client=AsyncMock();self.client.send_prepared.return_value={'success':True,'message_id':'sent-tool','status':'accepted','delivered':False}
         self.client_patch=patch('ryzeapi.tools.RyzeClient',return_value=self.client);self.client_patch.start()
         self.origin={'platform':'ryzeapi','chat':GID,'type':'group','user':OWNER}
     async def asyncTearDown(self):
@@ -150,7 +150,7 @@ class ToolTests(unittest.IsolatedAsyncioTestCase):
     async def test_actual_tool_dispatch_and_durable_dedup(self):
         result=await execute('buttons',self.args(),origin=self.origin)
         self.assertTrue(result['success'])
-        wire=self.client.send_rich.call_args.args[2]['buttons'][0]['id']
+        wire=self.client.send_prepared.call_args.args[1]['buttons'][0]['id']
         self.assertTrue(wire.startswith('hry_'));self.assertNotEqual(wire,'yes')
         from ryzeapi.interactions import correlate
         decoded,matched=correlate(self.root,'hermes-test',GID,
@@ -158,12 +158,12 @@ class ToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(matched);self.assertIn('Yes',decoded['content']['text'])
         self.assertEqual(decoded['reply']['message_id'],'sent-tool')
         result=await execute('buttons',self.args(),origin=self.origin)
-        self.assertTrue(result['reused']);self.client.send_rich.assert_awaited_once()
+        self.assertTrue(result['reused']);self.client.send_prepared.assert_awaited_once()
         self.assertNotIn('Choose',(self.root/'outbound.db').read_bytes().decode('latin1'))
 
     async def test_dry_run_does_not_call_provider(self):
         result=await execute('buttons',self.args(dry_run=True),origin=self.origin)
-        self.assertEqual(result['status'],'validated');self.client.send_rich.assert_not_awaited()
+        self.assertEqual(result['status'],'validated');self.client.send_prepared.assert_not_awaited()
         self.assertFalse((self.root/'outbound.db').exists())
         self.assertFalse((self.root/'interactions.db').exists())
 
@@ -171,7 +171,7 @@ class ToolTests(unittest.IsolatedAsyncioTestCase):
         args=self.args();args['number']=OWNER
         with self.assertRaises(ValueError):await execute('buttons',args,origin=self.origin)
         with self.assertRaises(ValueError):await execute('status',{'payload':FIXTURES['status'],'request_id':'status-test','confirm_status_broadcast':True},origin=self.origin)
-        self.client.send_rich.assert_not_awaited()
+        self.client.send_prepared.assert_not_awaited()
 
     async def test_status_requires_approval_and_uses_no_number(self):
         origin={'platform':'ryzeapi','chat':OWNER,'user':OWNER,'type':'dm'}
@@ -179,26 +179,27 @@ class ToolTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):await execute('status',args,origin=origin)
         args['confirm_status_broadcast']=True
         self.assertTrue((await execute('status',args,origin=origin))['success'])
-        self.client.send_rich.assert_awaited_once_with('status',None,FIXTURES['status'])
+        self.client.send_prepared.assert_awaited_once()
+        self.assertNotIn('number', self.client.send_prepared.call_args.args[1])
 
     async def test_unknown_reference_and_revoked_group_blocked(self):
         args=self.args();args['payload']['replyTo']='foreign-message'
         with self.assertRaises(ValueError):await execute('buttons',args,origin=self.origin)
         with GroupStore(self.root,'hermes-test') as store:store.configure(GID,'listen','mentions','all')
         with self.assertRaises(ValueError):await execute('buttons',self.args(),origin=self.origin)
-        self.client.send_rich.assert_not_awaited()
+        self.client.send_prepared.assert_not_awaited()
 
     async def test_uncertain_call_is_not_replayed(self):
-        self.client.send_rich.side_effect=RyzeError('timeout; uncertain')
+        self.client.send_prepared.side_effect=RyzeError('timeout; uncertain')
         self.assertFalse((await execute('buttons',self.args(),origin=self.origin))['success'])
         result=await execute('buttons',self.args(),origin=self.origin)
-        self.assertEqual(result['status'],'uncertain');self.client.send_rich.assert_awaited_once()
+        self.assertEqual(result['status'],'uncertain');self.client.send_prepared.assert_awaited_once()
 
     async def test_request_id_cannot_be_reused_for_different_content(self):
         await execute('buttons',self.args(),origin=self.origin)
         args=self.args();args['payload']['contentText']='Different'
         with self.assertRaises(ValueError):await execute('buttons',args,origin=self.origin)
-        self.client.send_rich.assert_awaited_once()
+        self.client.send_prepared.assert_awaited_once()
 
     async def test_registration_exposes_all_tools_with_schemas(self):
         class Context:
@@ -209,12 +210,14 @@ class ToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(e['is_async'] and e['toolset']=='ryzeapi' for e in ctx.entries))
 
     async def test_local_media_is_bounded_and_encoded(self):
-        image=Path(self.temp.name)/'synthetic.png'
+        from ryzeapi.attachments import attachment_root
+        folder=attachment_root();folder.mkdir(parents=True, exist_ok=True)
+        image=folder/'synthetic.png'
         image.write_bytes(b'synthetic-image')
         args={'payload':{'mediaType':'image'},'number':GID,'request_id':'local-media','file_path':str(image)}
         result=await execute('media',args,origin=self.origin)
         self.assertTrue(result['success'])
-        body=self.client.send_rich.call_args.args[2]
+        body=self.client.send_prepared.call_args.args[1]
         self.assertEqual(body['fileName'],'synthetic.png');self.assertEqual(body['mimeType'],'image/png')
         self.assertIn('mediaBase64',body)
 

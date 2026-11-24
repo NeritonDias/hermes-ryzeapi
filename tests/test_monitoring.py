@@ -44,7 +44,7 @@ class MonitoringTests(unittest.IsolatedAsyncioTestCase):
         self.put('stop','/stop');self.adapter.inbox.take_batch(0,stops_only=True,claim='preparing')
         self.adapter._running=True;self.adapter.consumer_tick=time.monotonic()
         self.adapter.worker=asyncio.create_task(asyncio.sleep(3))
-        class Request:headers={'Authorization':'Bearer '+'s'*40}
+        class Request: remote='127.0.0.1'; headers={'Authorization':'Bearer '+'s'*40}
         health=json.loads((await self.adapter.health(Request())).body)
         self.assertFalse(health['consumer_healthy']);self.assertEqual(health['orphaned_preparations'],1)
         await self.stop()

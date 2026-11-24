@@ -1,5 +1,14 @@
 # Release validation
 
+## 0.14.0 stable — 2026-11-24
+
+Verified on Linux ARM64 in the official Hermes 0.23.4 image. All 227 backend tests passed. Native Plugin Doctor registered the fourteen agent tools. Coverage includes conflicting receivers, ownership after uncertain webhook writes, authorization of the management API, private file reads, deduplication and operation with the Webapp port already occupied.
+
+Chromium loaded the actual Hermes Webapp and recognized the package as Agent + Desktop. Enabling the Desktop extension added RyzeAPI to the sidebar. The panel reached the Python backend and opened its credential form. Isolated UI scenarios covered onboarding, credential errors and pausing at 390, 820 and 1440 pixels, using synthetic provider data. No real WhatsApp number or provider credentials were connected in this release test.
+
+[Channel overview with sample data](screens/canal-1440.png) · [First use on mobile](screens/inicio-390.png)
+
+
 ## Baseline: 0.14.0-beta.1
 
 Date: September 15, 2026. Hermes commit `a982d2c882ce14aca6e98873b32d3dce8a496a27`; Linux ARM64 and Python 3.12.14.

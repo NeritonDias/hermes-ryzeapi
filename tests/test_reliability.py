@@ -29,7 +29,7 @@ class ReliabilityTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(self.adapter.worker, 3)
 
     async def health(self):
-        class Request: headers = {'Authorization':'Bearer '+'s'*40}
+        class Request: remote='127.0.0.1'; headers = {'Authorization':'Bearer '+'s'*40}
         return json.loads((await self.adapter.health(Request())).body)
 
     async def test_stop_preempts_stt_and_never_admits_cancelled_audio(self):

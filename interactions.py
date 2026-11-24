@@ -1,5 +1,6 @@
 """Correlate reply choices without trusting missing/foreign quoted-message metadata."""
-import copy, secrets, sqlite3, time
+import copy, json, secrets, sqlite3, time
+from .core import MAX_BODY
 from contextlib import closing
 
 TTL=7*86400
@@ -48,6 +49,9 @@ class InteractionStore:
                 self.db.execute('INSERT INTO choices VALUES (?,?,?,?,?,?,?,NULL,?)',
                     (wire,self.instance,chat,category,logical[:2000],label[:1000],context,time.time()))
                 option['id']=wire;choices.append(wire)
+        if choices:
+            if len(json.dumps(payload, allow_nan=False).encode()) > MAX_BODY:
+                raise ValueError('Interactive payload exceeds plugin limit after assigning reply IDs')
         return payload,choices
 
     def accepted(self,choices,mid):

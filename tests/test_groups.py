@@ -282,14 +282,15 @@ class GroupManagementTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(kw['payload']['events'],m.EVENTS)
                 return {'success':True}
             if (method,path)==('GET','/api/events/getWebhook/hermes-test'):
-                return {'success':True,'webhook':{'events':m.EVENTS}}
+                return {'success':True,'webhooks':[{'events':m.EVENTS,'label':m.infrastructure.load()['webhook_label'],'enabled':True,
+                    'url':mg.HOOK_URL,'authorization':'Bearer synthetic-hook-secret','mediaBase64':True,'byEvents':False}]}
             raise AssertionError('Undocumented method/path: '+method+' '+path)
         body={'instance':'hermes-test','jid':GID,'mode':'respond','trigger':'mentions','senders':'all','confirm':True}
         with patch.object(m,'upstream',side_effect=upstream):
             result=await self.client.post('/groups/policy',json=body)
             self.assertEqual(result.status_code,200)
             self.assertTrue(result.json()['saved'])
-        self.assertEqual(len(calls),4)
+        self.assertEqual(len(calls),3)
         with GroupStore(settings.directory(),'hermes-test') as reopened:
             policy=reopened.policy(GID)
             for key in ('mode','trigger','senders'):self.assertEqual(policy[key],body[key])

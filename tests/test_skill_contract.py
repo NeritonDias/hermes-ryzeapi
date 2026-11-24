@@ -77,9 +77,7 @@ class SkillContractTests(unittest.TestCase):
     def test_native_slash_command(self):
         from agent import skill_commands as sc
         from tools import skills_tool as st
-        with patch.object(st, 'SKILLS_DIR', self.home / 'skills'), \
-             patch.object(sc, '_skill_commands', {}), \
-             patch.object(sc, '_skill_commands_platform', None):
+        with patch.object(st, 'SKILLS_DIR', self.home / 'skills'):
             st._SKILLS_CACHE.clear()
             sc.scan_skill_commands()
             message = sc.build_skill_invocation_message('/ryzeapi', user_instruction='Explique como enviar uma enquete.')

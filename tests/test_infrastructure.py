@@ -9,7 +9,7 @@ class DeploymentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as home,patch('ryzeapi.infrastructure.directory',return_value=Path(home)):
             self.assertEqual(load()['public_origin'],'http://localhost:9119')
             self.assertEqual(load()['webhook_url'],'')
-            self.assertEqual(health_url(),'http://127.0.0.1:9120/health')
+            self.assertEqual(health_url(),'http://127.0.0.1:9131/health')
     def test_custom_origin_service_and_port(self):
         result=validate({'public_origin':'https://agent.example.com','webhook_url':'https://hooks.example.com/ryzeapi/events','listener_port':9125,'gateway_service':'hermes-work.service'})
         self.assertEqual(result['listener_port'],9125)

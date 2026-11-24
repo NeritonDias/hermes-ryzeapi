@@ -1,4 +1,4 @@
-# Versions exercised with the pinned Hermes runtime. Install in its venv.
-httpx==0.28.1
-aiohttp==3.14.3
-fastapi==0.133.1
+# Supported runtime ranges; the official Hermes image already supplies these libraries.
+httpx>=0.28.1,<1
+aiohttp>=3.14.3,<4
+fastapi>=0.133.1,<1

@@ -1,7 +1,11 @@
 """Private, atomic settings shared by the dashboard and gateway."""
-import json, os, tempfile
+import hashlib, json, os, tempfile
 from pathlib import Path
 from hermes_constants import get_hermes_home
+
+def inbox_path(home, instance):
+    key = hashlib.sha256(instance.encode()).hexdigest()[:16]
+    return home / f'ryzeapi-inbox-{key}.db'
 
 def directory():
     return get_hermes_home() / 'ryzeapi'
@@ -30,6 +34,11 @@ def save(value):
             json.dump(value, stream)
             stream.flush(); os.fsync(stream.fileno())
         os.replace(name, folder / 'settings.json')
+        descriptor = os.open(folder, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
     finally:
         if os.path.exists(name): os.unlink(name)
 

@@ -1,4 +1,6 @@
 from __future__ import annotations
+import socket
+import os
 import asyncio, base64, contextvars, copy, hashlib, hmac, json, logging, mimetypes, random, re, sqlite3, time
 from collections import Counter
 from datetime import datetime
@@ -8,17 +10,17 @@ from aiohttp import web
 from gateway.config import Platform
 from gateway.platforms.base import BasePlatformAdapter, SendResult
 from gateway.platforms.event import MessageEvent, MessageType
-from gateway.platforms._shared import get_scoped_secret
 from hermes_constants import get_hermes_home
 from .client import RyzeClient, RyzeError
 from .core import Inbox, MAX_BODY, MAX_MEDIA, PENDING_TTL, allowed_numbers, normalize, phone, authorized_phone, lid, canonical_envelope, validated_base64
+from .attachments import read_attachment
 from .maintenance import clean_media_cache
 from .telemetry import Telemetry
 from .timings import Timings
 from .deployment import native_activity, UpdateLease
 from .ingress import LaneQueue
 from .stt import run_stt
-from .settings import load, recipient_list, buffer_seconds, echo_transcripts, directory
+from .settings import inbox_path, load, recipient_list, buffer_seconds, echo_transcripts, directory
 from .groups import GroupStore, group_id
 from .interactions import correlate
 from . import infrastructure
@@ -57,6 +59,7 @@ class RyzeAdapter(BasePlatformAdapter):
         self.allowed_raw = settings.get('allowed_users', '')
         self.recipients_raw = recipient_list(settings)
         self.config.extra['allowed_users'] = self.allowed_raw
+        self.receiver_lock = None
         self.runner = self.client = self.inbox = self.worker = None
         self.allowed = set()
         self.recipients = set()
@@ -98,9 +101,19 @@ class RyzeAdapter(BasePlatformAdapter):
             self.allowed = allowed_numbers(self.allowed_raw)
             self.recipients = allowed_numbers(self.recipients_raw)
             if len(self.secret) < 32: raise ValueError('Webhook secret must have at least 32 characters')
+            # An abstract Unix socket holds the lease until disconnect or process exit.
+            # It is shared by profiles of the same OS user in this network namespace.
+            self.receiver_lock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+            instance_hash = hashlib.sha256(self.instance.encode()).hexdigest()
+            self.receiver_lock.bind(f'\0hermes-ryzeapi-{os.getuid()}-{instance_hash}')
             self.client = RyzeClient(self.instance, self.token)
-            inbox_id = hashlib.sha256(self.instance.encode()).hexdigest()[:16]
-            self.inbox = Inbox(get_hermes_home() / f'ryzeapi-inbox-{inbox_id}.db')
+            value = load()
+            if value.get('hook_label'):
+                from .webhooks import confirmed
+                hooks = (await self.client.envelope('GET', f'/api/events/getWebhook/{self.instance}')).get('webhooks')
+                if not confirmed(value, hooks):
+                    raise ValueError('Webhook ownership has changed')
+            self.inbox = Inbox(inbox_path(get_hermes_home(), self.instance))
             self.telemetry = Telemetry(self.inbox.db)
             self.group_store = GroupStore(directory(),self.instance)
             app = web.Application(client_max_size=MAX_BODY)
@@ -109,7 +122,8 @@ class RyzeAdapter(BasePlatformAdapter):
             app.router.add_post('/maintenance', self.maintenance)
             self.runner = web.AppRunner(app, access_log=None)
             await self.runner.setup()
-            await web.TCPSite(self.runner, '127.0.0.1', infrastructure.load()['listener_port']).start()
+            deployment = infrastructure.load()
+            await web.TCPSite(self.runner, deployment['listener_host'], deployment['listener_port']).start()
             self._running = True
             self.worker = asyncio.create_task(self.consume())
             self.ws_ingress = LaneQueue(self.ingest_queued,lambda item:self.ingress_key(item[0]))
@@ -150,6 +164,9 @@ class RyzeAdapter(BasePlatformAdapter):
         if self.client: await self.client.close(); self.client = None
         if self.inbox: self.inbox.close(); self.inbox = None
         if self.group_store: self.group_store.close(); self.group_store = None
+        if self.receiver_lock:
+            self.receiver_lock.close()
+            self.receiver_lock = None
 
     async def webhook(self, request):
         actual = request.headers.get('Authorization', '').encode()
@@ -411,6 +428,8 @@ class RyzeAdapter(BasePlatformAdapter):
         return web.json_response({'accepted': accepted, 'maintenance_active': self.update_lease.active}, status=200 if accepted else 409)
 
     async def health(self, request):
+        if request.remote not in {'127.0.0.1', '::1'}:
+            return web.json_response({'error': 'unauthorized'}, status=401)
         expected = ('Bearer ' + self.secret).encode()
         if not self.secret or not hmac.compare_digest(request.headers.get('Authorization', '').encode(), expected):
             return web.json_response({'error': 'unauthorized'}, status=401)
@@ -488,7 +507,7 @@ class RyzeAdapter(BasePlatformAdapter):
         try:
             if self.telemetry: self.telemetry.sent(mid,number)
             else:
-                path = get_hermes_home() / ('ryzeapi-inbox-'+hashlib.sha256(self.instance.encode()).hexdigest()[:16]+'.db')
+                path = inbox_path(get_hermes_home(), self.instance)
                 if path.exists():
                     db = sqlite3.connect('file:'+str(path)+'?mode=rw',uri=True)
                     try: Telemetry(db).sent(mid,number)
@@ -900,10 +919,7 @@ class RyzeAdapter(BasePlatformAdapter):
             return SendResult(success=False, error='Recipient blocked or RyzeAPI channel paused')
         try:
             source = Path(path)
-            if not source.is_file() or source.stat().st_size > MAX_MEDIA:
-                return SendResult(success=False, error='Attachment missing or exceeds 8 MiB limit')
-            raw = await asyncio.to_thread(source.read_bytes)
-            if not raw or len(raw) > MAX_MEDIA: raise ValueError('Invalid attachment size')
+            raw = await asyncio.to_thread(read_attachment, source)
             mime = mimetypes.guess_type(str(source))[0] or 'application/octet-stream'
             if not self.current() or not self.destination(chat_id): return SendResult(success=False, error='RyzeAPI firewall changed')
             self.observe_response()

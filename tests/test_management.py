@@ -15,16 +15,18 @@ TOKEN = 'synthetic-account-secret'
 INSTANCE_TOKEN = 'synthetic-instance-secret'
 ITEM = {'name': 'hermes-test', 'token': INSTANCE_TOKEN, 'connection': {'state': 'connected', 'numberJid': OWNER},
         'integrations': {'chatwoot': {'apiToken': 'synthetic-other-secret'}}}
-HEADERS = {'origin': m.PUBLIC_ORIGIN, 'x-ryze-ui': '1'}
+ORIGIN = 'http://localhost:9119'
+HOOK_URL = 'https://hooks.example.com/ryzeapi/events'
+HEADERS = {'origin': ORIGIN, 'x-ryze-ui': '1'}
 
 class ManagementTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.webhook_patch=patch.object(m,'WEBHOOK_URL','https://hooks.example.com/ryzeapi/events');self.webhook_patch.start()
         self.home = patch.object(settings, 'get_hermes_home', return_value=Path(self.temp.name)); self.home.start()
         settings.save({'enabled': False})
+        (settings.directory() / 'deployment.json').write_text(json.dumps({'webhook_url': HOOK_URL}))
         app = FastAPI(); app.include_router(m.router)
-        self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=m.PUBLIC_ORIGIN, headers=HEADERS)
+        self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=ORIGIN, headers=HEADERS)
         self.calls = []
         self.hook = {}
         async def upstream(token, method, path, **kwargs):
@@ -33,7 +35,7 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
             if path.startswith('/api/instance/connect/'): return {'success': True, 'status': 'qr', 'qrCodeBase64': 'data:image/png;base64,'+base64.b64encode(b'\x89PNG\r\n\x1a\nfixture').decode()}
             if path.startswith('/api/events/webhook/'):
                 self.hook = kwargs['payload']; return {'success': True}
-            if path.startswith('/api/events/getWebhook/'): return {'success': True, 'webhook': self.hook}
+            if path.startswith('/api/events/getWebhook/'): return {'success': True, 'webhooks': [self.hook] if self.hook else []}
             if path == '/api/instance/new': return {'success': True, 'instance': dict(ITEM, name=kwargs['payload']['name'])}
             raise AssertionError('Unexpected upstream path')
         self.up = patch.object(m, 'upstream', side_effect=upstream); self.up.start()
@@ -41,7 +43,7 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
         self.runtime = patch.object(m, 'runtime', new=AsyncMock(return_value=True)); self.runtime_mock = self.runtime.start()
 
     async def asyncTearDown(self):
-        await self.client.aclose(); self.up.stop(); self.restart.stop(); self.runtime.stop(); self.home.stop(); self.webhook_patch.stop(); self.temp.cleanup()
+        await self.client.aclose(); self.up.stop(); self.restart.stop(); self.runtime.stop(); self.home.stop(); self.temp.cleanup()
 
     async def setup_selected(self):
         self.assertEqual((await self.client.post('/account', json={'token': TOKEN, 'kind': 'account'})).status_code, 200)
@@ -139,11 +141,11 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
         await self.setup_selected()
         async def broken(token, method, path, **kwargs):
             if path == '/api/instance/list': return {'instances':[ITEM]}
-            return {'webhook': {}}
+            return {'webhooks': []}
         with patch.object(m,'upstream',side_effect=broken):
             result = await self.client.post('/activate',json={'allowed_users':OWNER,'confirm':True})
         self.assertEqual(result.status_code,502)
-        self.assertFalse(settings.load()['enabled']); self.assertEqual(self.restart_mock.await_count,2)
+        self.assertFalse(settings.load()['enabled']); self.restart_mock.assert_not_awaited()
 
     async def test_firewall_saved_without_connecting_or_authorizing_recipient(self):
         await self.setup_selected()

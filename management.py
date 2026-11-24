@@ -1,5 +1,6 @@
 """Dashboard control plane. Only allowlisted data is ever returned to the browser."""
-import asyncio, base64, hashlib, hmac, os, re, secrets, time, shutil
+import fcntl
+import asyncio, base64, hashlib, os, re, secrets, time, shutil
 from contextlib import asynccontextmanager
 from urllib.parse import quote
 import httpx
@@ -10,13 +11,24 @@ from .client import RyzeClient, RyzeError
 from .telemetry import EVENTS
 from .groups import GroupStore, group_id
 from . import infrastructure
+from .webhooks import confirmed, owned_hook
 
-BASE = 'https://ryzeapi.cloud'
-PUBLIC_ORIGIN = infrastructure.load()['public_origin']
-WEBHOOK_URL = infrastructure.load()['webhook_url']
-LABEL = infrastructure.load()['webhook_label']
 mutation_lock = asyncio.Lock()
 upstream_clients = None
+
+@asynccontextmanager
+async def mutation():
+    # Dashboard and Webapp can run in different processes against the same profile.
+    async with mutation_lock:
+        folder = settings.directory()
+        folder.mkdir(parents=True, mode=0o700, exist_ok=True)
+        with (folder / 'control.lock').open('a') as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise HTTPException(409, 'Outra configuração está em andamento. Atualize o estado.') from None
+            yield
+
 
 @asynccontextmanager
 async def lifespan(app):
@@ -29,11 +41,28 @@ async def lifespan(app):
 
 async def protect(request: Request, response: Response):
     response.headers['Cache-Control'] = 'no-store'
+    deployment = infrastructure.load()
+    session = getattr(request.state, 'session', None)
+    hosted = getattr(request.state, 'hosted_http_authenticated', None)
+    if hosted is False:
+        raise HTTPException(401, 'Entre no Hermes para administrar o RyzeAPI.')
+    external = bool(session or getattr(request.app.state, 'auth_required', False)
+                    or deployment['owner_subject'] or deployment['public_origin'].startswith('https://'))
+    if external:
+        if session is None:
+            raise HTTPException(401, 'Entre no Hermes com a conta do proprietário.')
+        if (not deployment['owner_subject']
+                or deployment['owner_subject'] != getattr(session, 'user_id', None)
+                or deployment['owner_issuer'] != getattr(session, 'issuer', None)):
+            raise HTTPException(403, 'Conta OIDC sem permissão para administrar o RyzeAPI.')
     if request.method != 'GET':
-        if request.headers.get('origin') != PUBLIC_ORIGIN or request.headers.get('x-ryze-ui') != '1':
+        if request.headers.get('origin') != deployment['public_origin']:
             raise HTTPException(403, 'Abra esta configuração pelo painel Hermes autenticado.')
         if request.headers.get('content-type', '').split(';')[0] != 'application/json':
             raise HTTPException(415, 'Envie os dados em JSON.')
+        if not external and request.headers.get('x-ryze-ui') != '1':
+            if (await body(request)).get('_ryze_ui') is not True:
+                raise HTTPException(403, 'Abra esta configuração pelo painel Hermes autenticado.')
 
 router = APIRouter(dependencies=[Depends(protect)], lifespan=lifespan)
 
@@ -104,7 +133,7 @@ async def instances(token, name=None):
     return result
 
 def editable(value):
-    if value.get('enabled'): raise HTTPException(409, 'Pause o Hermes neste canal antes de trocar conta ou instância.')
+    if value.get('enabled') or value.get('hook_pending') or value.get('webhook_configured'): raise HTTPException(409, 'Pause o Hermes neste canal antes de trocar conta ou instância.')
 
 def selected(value):
     if not value.get('instance') or not value.get('instance_token'):
@@ -124,18 +153,33 @@ def firewall_fields(data):
         raise HTTPException(400, 'Confirme as permissões do firewall de contatos.')
     return {'allowed_users': ','.join(sorted(numbers)), 'allowed_recipients': ','.join(sorted(recipients))}
 
-async def runtime(value):
-    if not value.get('webhook_secret'): return False
+async def read_health(value):
+    if not value.get('webhook_secret'):
+        return {}
     try:
-        async with httpx.AsyncClient(trust_env=False, timeout=2) as client:
-            result = await client.get(infrastructure.health_url(), headers={'Authorization': 'Bearer '+value['webhook_secret']})
+        async with httpx.AsyncClient(trust_env=False, timeout=3) as client:
+            result = await client.get(infrastructure.health_url(),
+                                      headers={'Authorization': 'Bearer '+value['webhook_secret']})
+        result.raise_for_status()
         data = result.json()
-        return result.status_code == 200 and data.get('running') is True and data.get('instance') == value.get('instance')
-    except (httpx.HTTPError, ValueError): return False
+        if isinstance(data, dict) and data.get('instance') == value.get('instance'):
+            return data
+    except (httpx.HTTPError, ValueError):
+        pass
+    return {}
+
+
+async def runtime(value):
+    return (await read_health(value)).get('running') is True
+
 
 async def restart():
-    if not shutil.which('systemctl'):
-        raise HTTPException(503,'Esta beta requer Linux com um serviço systemd de usuário para o gateway. Consulte docs/INSTALL.md.')
+    deployment = infrastructure.load()
+    managed = deployment['lifecycle'] == 'coolify' or (
+        deployment['lifecycle'] == 'auto' and not shutil.which('systemctl'))
+    if managed:
+        # Coolify owns this process. The durable configuration is picked up at redeploy.
+        return False
     env = dict(os.environ, XDG_RUNTIME_DIR=f'/run/user/{os.getuid()}',
                DBUS_SESSION_BUS_ADDRESS=f'unix:path=/run/user/{os.getuid()}/bus')
     proc = await asyncio.create_subprocess_exec('systemctl', '--user', 'restart', infrastructure.load()['gateway_service'],
@@ -155,26 +199,20 @@ async def state():
             'buffer_seconds': settings.buffer_seconds(value),
             'echo_transcripts': settings.echo_transcripts(value),
             'enabled': bool(value.get('enabled')), 'runtime_running': await runtime(value),
-            'webhook_configured': bool(value.get('webhook_configured')), 'webhook_url': WEBHOOK_URL}
+            'hook_pending': bool(value.get('hook_pending')), 'webhook_configured': bool(value.get('webhook_configured')), 'webhook_url': infrastructure.load()['webhook_url']}
 
 @router.get('/transport')
 async def transport_health():
     value = settings.load()
-    if not value.get('webhook_secret'): return {'running': False, 'websocket_connected': False}
-    try:
-        async with httpx.AsyncClient(trust_env=False, timeout=3) as client:
-            response = await client.get(infrastructure.health_url(),
-                headers={'Authorization': 'Bearer '+value['webhook_secret']})
-        if response.status_code != 200: raise ValueError('Not healthy')
-        data = response.json()
-        return {k: data.get(k) for k in ('running', 'websocket_connected', 'websocket_reconnects',
+    data = await read_health(value)
+    if not data:
+        return {'running': False, 'websocket_connected': False}
+    return {k: data.get(k) for k in ('running', 'websocket_connected', 'websocket_reconnects',
             'transport', 'last_event_at', 'last_send_at', 'counters', 'buffer_seconds', 'buffer_pending', 'echo_transcripts',
             'consumer_healthy', 'consumer_error', 'queue_counts', 'oldest_pending_seconds',
             'active_batches', 'pending_ttl_seconds', 'stt_busy', 'stt_waiting', 'orphaned_preparations',
             'ws_ingress_pending','ws_ingress_bytes','timings','early_receipts_pending','native_activity','maintenance_active',
             'whatsapp_state', 'whatsapp_observed_at', 'delivery_counts', 'review_items')}
-    except (httpx.HTTPError, ValueError):
-        return {'running': False, 'websocket_connected': False}
 
 @router.get('/groups')
 async def list_groups():
@@ -185,7 +223,7 @@ async def list_groups():
 @router.post('/groups/sync')
 async def sync_groups(request: Request):
     await body(request)
-    async with mutation_lock:
+    async with mutation():
         value = settings.load(); name, token = selected(value)
         result = await upstream(token,'GET',f'/api/group/list/{name}',params={'includeMembers':'false'},timeout=65)
         try:
@@ -201,7 +239,7 @@ async def group_policy(request: Request):
     if not group_id(jid) or mode not in {'blocked','listen','respond'} or trigger not in {'mentions','all'} or senders not in {'authorized','all'}:
         raise HTTPException(400,'Escolha um grupo e permissões válidas.')
     if data.get('confirm') is not True: raise HTTPException(400,'Confirme as permissões deste grupo.')
-    async with mutation_lock:
+    async with mutation():
         value = settings.load(); name, token = selected(value)
         if data.get('instance')!=name: raise HTTPException(409,'A instância mudou. Atualize os grupos antes de salvar.')
         with GroupStore(settings.directory(),name) as store:
@@ -218,11 +256,7 @@ async def group_policy(request: Request):
                 if (readback.get('settings') or {}).get('ignoreGroupMessages') is not False:
                     raise HTTPException(502,'A RyzeAPI não confirmou o recebimento de grupos. Permissão não aplicada.')
                 if value.get('webhook_configured'):
-                    await upstream(token,'POST',f'/api/events/webhook/{name}',payload={
-                        'label':LABEL,'enabled':True,'url':WEBHOOK_URL,'authorization':'Bearer '+value['webhook_secret'],
-                        'events':EVENTS,'mediaBase64':True,'byEvents':False})
-                    hook = (await upstream(token,'GET',f'/api/events/getWebhook/{name}',params={'label':LABEL})).get('webhook') or {}
-                    if hook.get('events')!=EVENTS: raise HTTPException(502,'Eventos de grupo não confirmados no webhook.')
+                    await verify_hook(value, enabled=True)
                 store.configure(jid,mode,trigger,senders)
             groups=store.list()
     return {'saved':True,'instance':name,'groups':groups}
@@ -233,7 +267,7 @@ async def save_buffer(request: Request):
     seconds = data.get('buffer_seconds')
     if type(seconds) is not int or not 0 <= seconds <= 60:
         raise HTTPException(400, 'Informe um número inteiro de 0 a 60 segundos. Use 0 para responder sem espera.')
-    async with mutation_lock:
+    async with mutation():
         value = settings.load(); selected(value)
         value['buffer_seconds'] = seconds
         settings.save(value)
@@ -245,7 +279,7 @@ async def save_transcription(request: Request):
     enabled = data.get('echo_transcripts')
     if type(enabled) is not bool:
         raise HTTPException(400, 'Marque ou desmarque a opção de enviar transcrições e salve novamente.')
-    async with mutation_lock:
+    async with mutation():
         value = settings.load(); selected(value)
         value['echo_transcripts'] = enabled
         settings.save(value)
@@ -257,7 +291,7 @@ async def account(request: Request):
     kind = text(data, 'kind')
     if kind not in ('account', 'instance'): raise HTTPException(400, 'Escolha TokenAccount ou TokenInstance.')
     token = credential(text(data, 'token', 4096))
-    async with mutation_lock:
+    async with mutation():
         current = settings.load(); editable(current)
         items = await instances(token)
         # Validate response completely before replacing an existing usable credential.
@@ -274,7 +308,7 @@ async def list_instances():
 @router.post('/select')
 async def select(request: Request):
     data = await body(request); name = valid_name(text(data, 'name'))
-    async with mutation_lock:
+    async with mutation():
         value = settings.load(); editable(value)
         if not value.get('account_token'): raise HTTPException(409, 'Conecte sua conta primeiro.')
         items = await instances(value['account_token'], name)
@@ -291,7 +325,7 @@ async def select(request: Request):
 async def create(request: Request):
     data = await body(request); name = valid_name(text(data, 'name'))
     if data.get('confirm') is not True: raise HTTPException(400, 'Confirme a criação dentro da cota da sua conta.')
-    async with mutation_lock:
+    async with mutation():
         value = settings.load(); editable(value)
         if value.get('credential_kind') != 'account' or not value.get('account_token'):
             raise HTTPException(409, 'Criar instâncias exige TokenAccount.')
@@ -313,7 +347,7 @@ async def connect(request: Request):
     data = await body(request)
     number = text(data, 'number', 30)
     if number and not phone(number): raise HTTPException(400, 'Informe o número do WhatsApp com DDI e DDD, somente dígitos.')
-    async with mutation_lock:
+    async with mutation():
         value = settings.load(); name, token = selected(value)
         result = await upstream(token, 'GET', f'/api/instance/connect/{quote(name, safe="")}',
             params={'number': phone(number)} if number else None, timeout=75)
@@ -341,80 +375,146 @@ async def connection():
     if not item: raise HTTPException(404, 'Instância selecionada não encontrada.')
     return {'instance': public_instance(item)}
 
+def hook_identity(value):
+    deployment = infrastructure.load()
+    return value.get('hook_label', deployment['webhook_label']), value.get('hook_url', deployment['webhook_url'])
+
+
+async def read_hooks(value):
+    name, token = selected(value)
+    result = await upstream(token, 'GET', f'/api/events/getWebhook/{name}')
+    hooks = result.get('webhooks')
+    if not isinstance(hooks, list) or any(not isinstance(h, dict) or not isinstance(h.get('enabled'), bool)
+                                          or not h.get('label') for h in hooks):
+        raise HTTPException(502, 'A RyzeAPI não confirmou a lista de webhooks.')
+    return hooks
+
+
+async def verify_hook(value, enabled):
+    label, url = hook_identity(value)
+    hooks = await read_hooks(value)
+    hook = next((h for h in hooks if h['label'] == label), {})
+    if not enabled and not hook.get('enabled'):
+        return
+    if enabled and confirmed(dict(value, hook_label=label, hook_url=url), hooks):
+        return
+    raise HTTPException(502, 'Estado do webhook não confirmado. Confira a instância antes de continuar.')
+
+
+async def disable_hook(value):
+    # Keep credentials and the pending flag through uncertain writes, including process death.
+    if not (value.get('webhook_configured') or value.get('hook_pending')):
+        return
+    label, _ = hook_identity(value)
+    name, token = selected(value)
+    value['hook_pending'] = True
+    settings.save(value)
+    own = next((h for h in await read_hooks(value) if h['label'] == label), {})
+    if own.get('enabled'):
+        if not owned_hook(value, own, label, hook_identity(value)[1]):
+            raise HTTPException(409, 'O webhook pertence a outro receptor. A configuração remota foi preservada.')
+        try:
+            await upstream(token, 'POST', f'/api/events/webhook/{name}',
+                           payload={'label': label, 'enabled': False})
+        except HTTPException:
+            # A timeout after commit and a failed write look identical until readback.
+            pass
+        await verify_hook(value, enabled=False)
+    value.update(hook_pending=False, webhook_configured=False)
+    settings.save(value)
+
+
+async def apply_settings(value):
+    if await restart() is False:
+        return await runtime(value)
+    for _ in range(16):
+        if await runtime(value):
+            return True
+        await asyncio.sleep(0.5)
+    raise HTTPException(503, 'O gateway não confirmou a configuração do canal.')
+
+
 @router.post('/activate')
 async def activate(request: Request):
-    data = await body(request)
-    permissions = firewall_fields(data)
-    if not WEBHOOK_URL:
-        raise HTTPException(400,'Configure seu webhook HTTPS com scripts/configure.py e reinicie o dashboard antes de ativar. Consulte docs/INSTALL.md.')
-    async with mutation_lock:
-        value = settings.load(); name, token = selected(value)
-        items = await instances(token, name)
-        item = next((i for i in items if i.get('name') == name), None)
+    permissions = firewall_fields(await body(request))
+    deployment = infrastructure.load()
+    label = deployment['webhook_label']
+    url = deployment['webhook_url']
+    if not url:
+        raise HTTPException(400, 'Configure o endereço HTTPS para receber eventos.')
+    async with mutation():
+        value = settings.load()
+        name, token = selected(value)
+        if value.get('enabled') or value.get('hook_pending'):
+            raise HTTPException(409, 'Pause e reconcilie o canal antes de reativar.')
+        item = next((i for i in await instances(token, name) if i.get('name') == name), None)
         if not item or public_instance(item)['status'] != 'connected':
             raise HTTPException(409, 'Conecte o WhatsApp antes de ativar o Hermes.')
-        value.update(**permissions, enabled=True,
-                     webhook_secret=value.get('webhook_secret') or secrets.token_urlsafe(48), webhook_configured=False)
+        hooks = await read_hooks(value)
+        for hook in hooks:
+            if hook['enabled'] and not owned_hook(value, hook, label, url):
+                raise HTTPException(409, 'Já existe um receptor ativo nesta instância. Escolha uma instância dedicada.')
+            if hook['label'] == label and not hook['enabled'] and (
+                    value.get('hook_label') != label or value.get('hook_instance') != name):
+                raise HTTPException(409, 'Esse label já está reservado. Configure um label exclusivo.')
+        value.update(**permissions, enabled=False, hook_pending=True, hook_url=url, hook_label=label, hook_instance=name,
+                     webhook_secret=value.get('webhook_secret') or secrets.token_urlsafe(48))
         settings.save(value)
         try:
-            await restart()
-            running = False
-            for _ in range(16):
-                if await runtime(value): running = True; break
-                await asyncio.sleep(0.5)
-            if not running: raise HTTPException(503, 'O canal RyzeAPI não iniciou no gateway. A ativação foi cancelada.')
-            await upstream(token, 'POST', f'/api/events/webhook/{quote(name, safe="")}', payload={
-                'label': LABEL, 'enabled': True, 'url': WEBHOOK_URL,
+            await upstream(token, 'POST', f'/api/events/webhook/{name}', payload={
+                'label': label, 'enabled': True, 'url': url,
                 'authorization': 'Bearer '+value['webhook_secret'], 'events': EVENTS,
                 'mediaBase64': True, 'byEvents': False})
-            readback = await upstream(token, 'GET', f'/api/events/getWebhook/{quote(name, safe="")}', params={'label': LABEL})
-            hook = readback.get('webhook') or {}
-            if not (hook.get('enabled') is True and hook.get('url') == WEBHOOK_URL and
-                    hook.get('mediaBase64') is True and hook.get('byEvents') is False and
-                    hook.get('events') == EVENTS and
-                    hmac.compare_digest(str(hook.get('authorization', '')), 'Bearer '+value['webhook_secret'])):
-                raise HTTPException(502, 'A RyzeAPI não confirmou o webhook esperado. Ativação cancelada; confira a configuração.')
-            value['webhook_configured'] = True; settings.save(value)
+            await verify_hook(value, enabled=True)
+            value.update(enabled=True, webhook_configured=True, hook_pending=False)
+            settings.save(value)
+            running = await apply_settings(value)
         except Exception:
-            value['enabled'] = False; settings.save(value)
-            try: await restart()
-            except Exception: pass  # Adapter independently checks the saved kill switch.
+            value['enabled'] = False
+            settings.save(value)
+            await disable_hook(value)
             raise
-    return {'enabled': True, 'runtime_running': True, 'webhook_configured': True}
+    return {'enabled': True, 'runtime_running': running, 'redeploy_required': not running, 'webhook_configured': True}
+
 
 @router.post('/firewall')
 async def firewall(request: Request):
     permissions = firewall_fields(await body(request))
-    async with mutation_lock:
-        value = settings.load(); selected(value)
-        value.update(permissions); settings.save(value)
+    async with mutation():
+        value = settings.load()
+        selected(value)
+        value.update(permissions)
+        settings.save(value)
+        running = False
         if value.get('enabled'):
             try:
-                await restart()
-                for _ in range(16):
-                    if await runtime(value): break
-                    await asyncio.sleep(0.5)
-                else: raise HTTPException(503, 'O gateway não confirmou o novo firewall. O canal foi pausado por segurança.')
+                running = await apply_settings(value)
             except Exception:
-                value['enabled'] = False; settings.save(value)
-                try: await restart()
-                except Exception: pass
+                value['enabled'] = False
+                settings.save(value)
+                await disable_hook(value)
                 raise
-    return {'saved': True, 'enabled': bool(value.get('enabled')), **permissions}
+    return {'saved': True, 'enabled': bool(value.get('enabled')),
+            'redeploy_required': bool(value.get('enabled') and not running), **permissions}
+
 
 @router.post('/pause')
 async def pause(request: Request):
     await body(request)
-    async with mutation_lock:
-        value = settings.load(); value['enabled'] = False; settings.save(value)
+    async with mutation():
+        value = settings.load()
+        value['enabled'] = False
+        settings.save(value)
+        await disable_hook(value)
         await restart()
-    return {'enabled': False}
+    return {'enabled': False, 'webhook_configured': False}
+
 
 @router.post('/forget')
 async def forget(request: Request):
     data = await body(request)
     if data.get('confirm') is not True: raise HTTPException(400, 'Confirme a remoção local do acesso.')
-    async with mutation_lock:
+    async with mutation():
         value = settings.load(); editable(value)
         settings.save({'enabled': False})
     return {'credential_saved': False}

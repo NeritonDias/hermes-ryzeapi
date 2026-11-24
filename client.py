@@ -89,8 +89,12 @@ class RyzeClient:
         return data.get('contact') or {}
 
     async def send_rich(self, kind, number, payload):
-        from .outbound import prepare, KINDS
+        from .outbound import prepare
         body,warnings=prepare(kind,payload,number)
+        return await self.send_prepared(kind, body, warnings)
+
+    async def send_prepared(self, kind, body, warnings):
+        from .outbound import KINDS
         result=await self.envelope('POST',f'/api/message/{KINDS[kind][1]}/{self.instance}',
                                    payload=body,timeout=60+body.get('delay',0))
         data=result.get('data')
