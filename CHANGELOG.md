@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.3
+
+Fixed the voice worker importing the plugin’s tools module instead of Hermes transcription tools. The receiver reports redacted STT failure categories and respects disabled transcription. A local whisper.cpp command adapter normalizes voice notes for CPU inference on self-hosted installations.
+
 ## 0.14.2
 
 The new Webhooks page uses the public URL of the installed Hermes profile. It shows remote registration and both ends of the WebSocket connection, lets the owner edit the paused receiver, and copies its callback address. On the official Coolify/s6 image, the gateway can gracefully apply changes after returning the management response.

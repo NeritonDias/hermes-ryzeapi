@@ -8,7 +8,7 @@ A community WhatsApp integration for **Hermes Agent** with a web dashboard, two 
 
 **Author: Neriton Dias** · [Instagram @neritondias](https://www.instagram.com/neritondias/) · [MIT license](LICENSE)
 
-**Stable release: 0.14.2.** Independent project, not officially affiliated with Nous Research, RyzeAPI or WhatsApp. Bring your own RyzeAPI account and configured Hermes installation. No credentials, hosting or model subscription are included. Dashboard labels and bundled skill instructions currently use Brazilian Portuguese; the README and installation guide are bilingual.
+**Stable release: 0.14.3.** Independent project, not officially affiliated with Nous Research, RyzeAPI or WhatsApp. Bring your own RyzeAPI account and configured Hermes installation. No credentials, hosting or model subscription are included. Dashboard labels and bundled skill instructions currently use Brazilian Portuguese; the README and installation guide are bilingual.
 
 ## An alternative to the built-in WhatsApp channel
 
@@ -34,11 +34,13 @@ In the **Hermes v0.23.4 Webapp**, sign in as the owner and open **Capabilities �
 
 The **Webhooks** tab and the **Gerenciar webhooks** link in settings open `{{domain}}/#/ryzeapi/webhooks`. The plugin reads the active Hermes profile’s `webapp.public_url` to construct its HTTPS callback at `{{domain}}/ryzeapi/events`. Configure the proxy to forward this POST to the internal receiver.
 
-To install **v0.14.2** from the terminal, run the command in the profile used by the gateway. The SHA pins the reviewed release. The default profile in the official image is `/opt/data`.
+Voice notes use the profile’s transcription backend. [Configure local STT](docs/INSTALL.md#local-voice-transcription)
+
+To install **v0.14.3** from the terminal, run the command in the profile used by the gateway. The SHA pins the reviewed release. The default profile in the official image is `/opt/data`.
 
 ```bash
-commit=$(git ls-remote --refs https://github.com/NeritonDias/hermes-ryzeapi.git refs/tags/v0.14.2 | cut -f1)
-hermes plugins install NeritonDias/hermes-ryzeapi --ref "${commit:?v0.14.2}" --no-deps --no-enable
+commit=$(git ls-remote --refs https://github.com/NeritonDias/hermes-ryzeapi.git refs/tags/v0.14.3 | cut -f1)
+hermes plugins install NeritonDias/hermes-ryzeapi --ref "${commit:?v0.14.3}" --no-deps --no-enable
 hermes plugins doctor "${HERMES_HOME:-$HOME/.hermes}/plugins/ryzeapi" --ci
 hermes plugins enable ryzeapi
 ```
@@ -93,11 +95,11 @@ Remove `dry_run` only for an authorized destination and content. An `accepted` r
 - **PIX:** displays a key for copying; does not perform payments, create charges or verify receipt. Status requires specific authorization for content and audience.
 - **Delivery:** no exactly-once guarantee. Uncertain operations are not automatically retried; inspect their records first.
 - **Menus:** correlation expires after seven days. COPY/URL/CALL actions do not necessarily generate reply messages.
-- Release v0.14.2 was validated on Linux ARM64 with the official Hermes v0.23.4 image. [Validation results](docs/VALIDATION.md)
+- Release v0.14.3 was validated on Linux ARM64 with the official Hermes v0.23.4 image. [Validation results](docs/VALIDATION.md)
 
 ## Versions and releases
 
-Current version: **[v0.14.2](https://github.com/NeritonDias/hermes-ryzeapi/releases/tag/v0.14.2)**.
+Current version: **[v0.14.3](https://github.com/NeritonDias/hermes-ryzeapi/releases/tag/v0.14.3)**.
 
 Privacy maintenance: the initial public history and old archive were sanitized to replace a partially anonymized test fixture. Commit hashes and archive checksums changed; use a fresh clone/download if you obtained the initial release.
 

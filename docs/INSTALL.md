@@ -2,7 +2,7 @@
 
 [![English](https://img.shields.io/badge/Language-English-196b62)](INSTALL.md) [![Português (Brasil)](https://img.shields.io/badge/Idioma-PT--BR-196b62)](INSTALL.pt-BR.md)
 
-[Back to README](../README.md) · Distribution **0.14.2**.
+[Back to README](../README.md) · Distribution **0.14.3**.
 
 ## Prerequisites
 
@@ -11,15 +11,15 @@
 - Your own RyzeAPI account, available instance quota and an authorized WhatsApp account to pair.
 - An authenticated dashboard and a public HTTPS webhook. You provide domains, edge routing, certificates and authentication.
 
-Validated environment for v0.14.2: official Hermes v0.23.4 image on Linux ARM64. This plugin does not install models, provide hosting or use the author's account.
+Validated environment for v0.14.3: official Hermes v0.23.4 image on Linux ARM64. This plugin does not install models, provide hosting or use the author's account.
 
 ## Install
 
 Review code and permissions first: a Python plugin runs with the Hermes process's access.
 
 ```bash
-commit=$(git ls-remote --refs https://github.com/NeritonDias/hermes-ryzeapi.git refs/tags/v0.14.2 | cut -f1)
-hermes plugins install NeritonDias/hermes-ryzeapi --ref "${commit:?v0.14.2}" --no-deps --no-enable
+commit=$(git ls-remote --refs https://github.com/NeritonDias/hermes-ryzeapi.git refs/tags/v0.14.3 | cut -f1)
+hermes plugins install NeritonDias/hermes-ryzeapi --ref "${commit:?v0.14.3}" --no-deps --no-enable
 hermes plugins list
 ```
 
@@ -164,3 +164,20 @@ hermes plugins uninstall ryzeapi
 ```
 
 Check prompts/options in your installed Hermes version. Disabling/removing the plugin does not delete your RyzeAPI account, paired device, private data or exported skills. Remove `ryzeapi` and `ryzeapi-painel` through the skill manager if desired, after preserving customizations. Conversation archives and SQLite files need your own retention policy.
+
+## Local voice transcription
+
+RyzeAPI uses the active Hermes profile’s STT provider. The transcript echo preference controls the copy sent back to WhatsApp. On the official ARM64 image, whisper.cpp with FFmpeg and the multilingual Small Q5_1 model provides local CPU inference without an API key.
+
+Install the architecture-specific `whisper-cli` executable under `$HERMES_HOME/ryzeapi/stt/whisper-cli` and the model under `$HERMES_HOME/ryzeapi/stt/model.bin`, readable by the gateway user. The validated whisper.cpp release is v1.9.6. Verify the SHA-256 of `ggml-small-q5_1.bin` before installing it: `ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb`. [Official source](https://github.com/ggml-org/whisper.cpp/tree/v1.9.6) · [Model files](https://huggingface.co/ggerganov/whisper.cpp)
+
+With the extension installed, run as the Hermes user:
+
+```sh
+profile=${HERMES_HOME:-"$HOME/.hermes"}
+hermes config set HERMES_LOCAL_STT_COMMAND "\"$profile/plugins/ryzeapi/scripts/whisper_cpp.sh\" \"$profile/ryzeapi/stt\" {input_path} {output_dir}/transcript.txt {language}"
+hermes config set stt.local.language pt
+hermes config set stt.provider local_command
+```
+
+Restart this profile’s gateway while idle. Send a voice note from an authorized contact and verify the response. Include the engine directory in the persistent volume backup.

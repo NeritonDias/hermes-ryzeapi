@@ -64,6 +64,28 @@ class TranscriptionTests(unittest.IsolatedAsyncioTestCase):
         with patch('tools.transcription_tools.transcribe_audio',return_value={'success':True,'transcript':' '}):
             self.assertIsNone(transcribe('/synthetic.mp3'))
 
+    async def test_actual_worker_imports_hermes_tools_and_calls_local_stt(self):
+        import os, shlex, sys, wave
+        from ryzeapi.stt import run_stt
+        home = Path(self.temp.name)
+        audio = home / 'sample.wav'
+        with wave.open(str(audio), 'wb') as wav:
+            wav.setparams((1, 2, 16000, 0, 'NONE', 'not compressed'))
+            wav.writeframes(bytes(32000))
+        provider = home / 'fixture.py'
+        provider.write_text('import pathlib,sys; (pathlib.Path(sys.argv[1])/"fixture.txt").write_text("frase de teste")')
+        command = shlex.join([sys.executable, str(provider)]) + ' {output_dir}'
+        with patch.dict(os.environ, HERMES_HOME=str(home), HERMES_LOCAL_STT_COMMAND=command):
+            self.assertEqual(await run_stt(audio), 'frase de teste')
+
+    async def test_disabled_transcription_never_calls_fallback(self):
+        from ryzeapi.stt_worker import TranscriptionFailure, transcribe
+        with patch('tools.transcription_tools.is_stt_enabled',return_value=False), \
+             patch('tools.transcription_tools.transcribe_audio_local_fallback') as fallback:
+            with self.assertRaisesRegex(TranscriptionFailure, '^disabled$'):
+                transcribe('/fixture.wav')
+            fallback.assert_not_called()
+
     async def test_echo_on_sends_each_in_order_even_identical_and_can_revoke_midway(self):
         from gateway.platforms.base import SendResult
         self.adapter.send=AsyncMock(return_value=SendResult(success=True))

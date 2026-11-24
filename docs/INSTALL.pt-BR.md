@@ -2,7 +2,7 @@
 
 [![English](https://img.shields.io/badge/Language-English-196b62)](INSTALL.md) [![Português (Brasil)](https://img.shields.io/badge/Idioma-PT--BR-196b62)](INSTALL.pt-BR.md)
 
-[Voltar ao README](../README.pt-BR.md) · Distribuição **0.14.2**.
+[Voltar ao README](../README.pt-BR.md) · Distribuição **0.14.3**.
 
 ## Pré-requisitos
 
@@ -11,15 +11,15 @@
 - Conta RyzeAPI, cota disponível e WhatsApp autorizado para pareamento.
 - Dashboard autenticado e webhook público HTTPS. Domínios, portas de borda, certificados e autenticação são responsabilidade da sua infraestrutura.
 
-Ambiente validado para a v0.14.2: imagem oficial Hermes v0.23.4 em Linux ARM64. Este plugin não instala modelos, não fornece hospedagem e não usa uma conta do autor.
+Ambiente validado para a v0.14.3: imagem oficial Hermes v0.23.4 em Linux ARM64. Este plugin não instala modelos, não fornece hospedagem e não usa uma conta do autor.
 
 ## Instalar
 
 Revise o código e permissões: um plugin Python roda com acesso do processo Hermes.
 
 ```bash
-commit=$(git ls-remote --refs https://github.com/NeritonDias/hermes-ryzeapi.git refs/tags/v0.14.2 | cut -f1)
-hermes plugins install NeritonDias/hermes-ryzeapi --ref "${commit:?v0.14.2}" --no-deps --no-enable
+commit=$(git ls-remote --refs https://github.com/NeritonDias/hermes-ryzeapi.git refs/tags/v0.14.3 | cut -f1)
+hermes plugins install NeritonDias/hermes-ryzeapi --ref "${commit:?v0.14.3}" --no-deps --no-enable
 hermes plugins list
 ```
 
@@ -159,3 +159,20 @@ hermes plugins uninstall ryzeapi
 ```
 
 Confirme as opções mostradas pela sua versão Hermes. O plugin não apaga sua conta RyzeAPI, aparelho, dados ou cópias das skills ao ser desabilitado/removido. Remova ryzeapi e ryzeapi-painel pelo gerenciador de skills se desejar; preserve antes suas personalizações. Arquivos privados de conversas/SQLite precisam de política de retenção própria.
+
+## Transcrição local de áudios
+
+O RyzeAPI usa o STT configurado no perfil Hermes. A opção **Enviar transcrições na conversa** controla o envio da cópia ao WhatsApp. Para reconhecer voz, o perfil precisa de um motor de transcrição funcional. Na imagem oficial para ARM64, uma opção local é usar whisper.cpp com FFmpeg e o modelo multilíngue Small Q5_1. O processamento usa CPU e não exige uma chave de API.
+
+Coloque o executável `whisper-cli` compilado para a arquitetura em `$HERMES_HOME/ryzeapi/stt/whisper-cli` e o modelo em `$HERMES_HOME/ryzeapi/stt/model.bin`, legíveis pelo usuário do gateway. A versão validada do whisper.cpp é v1.9.6. Verifique o SHA-256 do arquivo `ggml-small-q5_1.bin` antes de instalá-lo: `ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb`. [Código oficial](https://github.com/ggml-org/whisper.cpp/tree/v1.9.6) · [Modelos publicados](https://huggingface.co/ggerganov/whisper.cpp)
+
+Com a extensão instalada, execute como usuário do Hermes:
+
+```sh
+profile=${HERMES_HOME:-"$HOME/.hermes"}
+hermes config set HERMES_LOCAL_STT_COMMAND "\"$profile/plugins/ryzeapi/scripts/whisper_cpp.sh\" \"$profile/ryzeapi/stt\" {input_path} {output_dir}/transcript.txt {language}"
+hermes config set stt.local.language pt
+hermes config set stt.provider local_command
+```
+
+Reinicie o gateway deste perfil em uma janela ociosa. Envie uma nota de voz de um número autorizado e confira a resposta. Inclua a pasta do motor e do modelo no backup do volume persistente.

@@ -19,7 +19,7 @@ from .telemetry import Telemetry
 from .timings import Timings
 from .deployment import native_activity, UpdateLease
 from .ingress import LaneQueue
-from .stt import run_stt
+from .stt import TranscriptionError, run_stt
 from .settings import inbox_path, load, recipient_list, buffer_seconds, echo_transcripts, directory
 from .groups import GroupStore, group_id
 from .interactions import correlate
@@ -754,6 +754,9 @@ class RyzeAdapter(BasePlatformAdapter):
                     finally: self.timings.observe('stt_execution',time.monotonic()-started)
         except asyncio.TimeoutError:
             self.stats['transcription_timeout'] += 1
+        except TranscriptionError as exc:
+            self.stats['stt_' + str(exc)] += 1
+            logger.warning('RyzeAPI transcription failed reason=%s', exc)
         except Exception:
             logger.warning('RyzeAPI transcription unavailable; content and error omitted')
         finally:
@@ -828,7 +831,7 @@ class RyzeAdapter(BasePlatformAdapter):
                         part += '\n[Transcrição do áudio]\n' + transcript
                         transcripts.append((transcript, item['id']))
                     else:
-                        part += '\n[Não foi possível transcrever este áudio automaticamente. Não invente seu conteúdo.]'
+                        part += '\n[Não foi possível transcrever este áudio automaticamente. Informe a falha e peça uma nova mensagem. Não instale dependências por conta própria nem invente o conteúdo.]'
                     part += '\n[Arquivo de áudio original: ' + str(path) + ']'
                 else:
                     media_paths.append(str(path)); media_types.append(media['mime'])

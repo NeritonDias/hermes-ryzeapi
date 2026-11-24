@@ -1,5 +1,9 @@
 # Release validation
 
+## 0.14.3
+
+Validated on the official Hermes v0.23.4 ARM64 image. The actual disposable plugin worker reached Hermes STT in a subprocess. Offline Whisper Small Q5_1 decoded a Portuguese Ogg/Opus fixture and produced a nonempty transcript for an incoming MP3. The private recording and its transcript are excluded from this repository.
+
 ## 0.14.2
 
 The official Hermes v0.23.4 Linux ARM64 image passed 234 backend tests. Chromium exercised all five views on an isolated Oracle instance at 390, 820 and 1440 pixels, including a 580-pixel Hermes content pane. The Webhooks editor rejected an invalid label, saved a valid label through the actual plugin API, and restored the saved value after reload. These browser fixtures used synthetic provider responses. Two separate Webapp configurations produced their own callback URLs, including one with an explicit HTTPS port.

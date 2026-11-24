@@ -8,7 +8,7 @@ Plugin comunitário de WhatsApp para **Hermes Agent**, com painel web, duas skil
 
 **Autor: Neriton Dias** · [Instagram @neritondias](https://www.instagram.com/neritondias/) · [MIT](LICENSE)
 
-**Versão estável: 0.14.2.** Projeto independente, sem afiliação oficial com Nous Research, RyzeAPI ou WhatsApp. Requer sua própria conta RyzeAPI e um Hermes configurado; este repositório não inclui credenciais, hospedagem nem assinatura de modelo. Painel e instruções das skills estão em PT-BR; README e instalação têm versões em inglês e português.
+**Versão estável: 0.14.3.** Projeto independente, sem afiliação oficial com Nous Research, RyzeAPI ou WhatsApp. Requer sua própria conta RyzeAPI e um Hermes configurado; este repositório não inclui credenciais, hospedagem nem assinatura de modelo. Painel e instruções das skills estão em PT-BR; README e instalação têm versões em inglês e português.
 
 ## Alternativa ao WhatsApp nativo do Hermes
 
@@ -34,11 +34,13 @@ No **Webapp do Hermes v0.23.4**, entre com a conta do proprietário e abra **Cap
 
 No Webapp, a aba **Webhooks** e o atalho **Gerenciar webhooks** em Configurações abrem `{{domain}}/#/ryzeapi/webhooks`. O instalador lê `webapp.public_url` do perfil Hermes para montar o callback HTTPS `{{domain}}/ryzeapi/events`. Configure o proxy para entregar esse POST ao receptor interno.
 
-Para instalar a **v0.14.2** pelo terminal, execute o comando no perfil que o gateway usa. O SHA fixa a versão revisada. Na imagem oficial, o perfil padrão fica em `/opt/data`.
+Notas de voz usam o motor de transcrição do perfil. [Configurar transcrição local](docs/INSTALL.pt-BR.md#transcrição-local-de-áudios)
+
+Para instalar a **v0.14.3** pelo terminal, execute o comando no perfil que o gateway usa. O SHA fixa a versão revisada. Na imagem oficial, o perfil padrão fica em `/opt/data`.
 
 ```bash
-commit=$(git ls-remote --refs https://github.com/NeritonDias/hermes-ryzeapi.git refs/tags/v0.14.2 | cut -f1)
-hermes plugins install NeritonDias/hermes-ryzeapi --ref "${commit:?v0.14.2}" --no-deps --no-enable
+commit=$(git ls-remote --refs https://github.com/NeritonDias/hermes-ryzeapi.git refs/tags/v0.14.3 | cut -f1)
+hermes plugins install NeritonDias/hermes-ryzeapi --ref "${commit:?v0.14.3}" --no-deps --no-enable
 hermes plugins doctor "${HERMES_HOME:-$HOME/.hermes}/plugins/ryzeapi" --ci
 hermes plugins enable ryzeapi
 ```
@@ -49,7 +51,7 @@ O canal WhatsApp começa pausado. Para conectá-lo, configure o proprietário OI
 
 ## Versões e releases
 
-Versão atual: **[v0.14.2](https://github.com/NeritonDias/hermes-ryzeapi/releases/tag/v0.14.2)**.
+Versão atual: **[v0.14.3](https://github.com/NeritonDias/hermes-ryzeapi/releases/tag/v0.14.3)**.
 
 ## Duas skills instaladas automaticamente
 
@@ -93,7 +95,7 @@ Exemplo sintético para `ryzeapi_send_buttons`. Retire dry_run apenas com destin
 - PIX apresenta chave para copiar; não executa pagamento, cobrança nem confirma recebimento. Status exige autorização explícita da audiência/conteúdo.
 - Não há garantia de processamento/entrega exatamente uma vez. Operações incertas não são repetidas automaticamente; consulte os registros.
 - Correlações de menus expiram em 7 dias. COPY/URL/CALL não produzem necessariamente uma mensagem de resposta.
-- A v0.14.2 foi validada na imagem oficial do Hermes v0.23.4 em Linux ARM64. [Resultados da validação](docs/VALIDATION.md)
+- A v0.14.3 foi validada na imagem oficial do Hermes v0.23.4 em Linux ARM64. [Resultados da validação](docs/VALIDATION.md)
 
 ## Desenvolvimento e suporte
 
