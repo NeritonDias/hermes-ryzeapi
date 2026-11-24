@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { Button } from '@nous-research/ui/ui/components/button';
 import { Input } from '@nous-research/ui/ui/components/input';
 import { Label } from '@nous-research/ui/ui/components/label';
-let state = {credential_saved:false,credential_kind:'account',instance:'',allowed_users:'',allowed_recipients:'',enabled:false,runtime_running:false,webhook_configured:false,buffer_seconds:10,echo_transcripts:true};
+let state = {credential_saved:false,credential_kind:'account',instance:'',allowed_users:'',allowed_recipients:'',enabled:false,runtime_running:false,webhook_configured:false,webhook_url:'https://example.test/ryzeapi/events',buffer_seconds:10,echo_transcripts:true};
 let status = 'disconnected';
 let instances = [];
 window.testSeed = value => { Object.assign(state,value); if(state.instance && !instances.includes(state.instance)) instances.push(state.instance); };
@@ -39,6 +39,7 @@ window.__HERMES_PLUGIN_SDK__ = {React, components:{Button,Input,Label}, fetchJSO
   if (path==='/select') {state.instance=data.name; return {instance:item(data.name)};}
   if (path==='/connect') return data.number ? {pairing_code:'ABCD-EFGH',expires_in:60,status:'pairing'} :
     {qr:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXuoAAAAASUVORK5CYII=',expires_in:20,status:'qr'};
+  if (path==='/activation-status') return {instance:state.instance,reasons:[]};
   if (path==='/connection') return {instance:item(state.instance)};
   if (path==='/activate') {Object.assign(state,{enabled:true,runtime_running:true,webhook_configured:true,allowed_users:data.allowed_users,allowed_recipients:data.allowed_recipients}); return {...state};}
   if (path==='/firewall') {Object.assign(state,{allowed_users:data.allowed_users,allowed_recipients:data.allowed_recipients});return {saved:true,...state};}

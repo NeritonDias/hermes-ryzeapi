@@ -2,11 +2,18 @@
 import asyncio,json,os,signal,sys
 from pathlib import Path
 
+class TranscriptionError(RuntimeError):
+    """Contains only an approved reason code, never provider details or content."""
+
+
 def command(path):
-    return [sys.executable,'-u',str(Path(__file__).with_name('stt_worker.py')),str(path)]
+    return [sys.executable,'-P','-u',str(Path(__file__).with_name('stt_worker.py')),str(path)]
 
 async def run_stt(path):
-    env = dict(os.environ,PYTHONPATH=os.pathsep.join(str(p) for p in sys.path if p))
+    # Direct script execution must not put RyzeAPI's tools.py ahead of Hermes' tools package.
+    folder = Path(__file__).resolve().parent
+    paths = [p for p in sys.path if p and Path(p).resolve() != folder]
+    env = dict(os.environ, PYTHONPATH=os.pathsep.join(paths))
     proc = await asyncio.create_subprocess_exec(*command(path),env=env,start_new_session=True,
         stdin=asyncio.subprocess.DEVNULL,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.DEVNULL)
     try:
@@ -16,8 +23,10 @@ async def run_stt(path):
             data.extend(chunk)
             if len(data)>128*1024: raise ValueError('STT output limit')
         await proc.wait()
-        if proc.returncode: return None
+        if proc.returncode: raise RuntimeError('STT worker exited')
         value = json.loads(data)
+        if isinstance(value, dict) and value.get('error') in ('no_provider', 'worker_import', 'provider_failed', 'disabled'):
+            raise TranscriptionError(value['error'])
         text = value.get('transcript') if isinstance(value,dict) else None
         return text[:17000] if isinstance(text,str) and text.strip() else None
     finally:

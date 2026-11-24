@@ -76,12 +76,32 @@ class RyzeClient:
         return data
 
     async def ensure_websocket(self):
-        expected = {'enabled': True, 'events': EVENTS, 'mediaBase64': True}
-        actual = (await self.envelope('GET', f'/api/events/getWebsocket/{self.instance}')).get('websocket') or {}
-        if all(actual.get(k) == v for k, v in expected.items()): return
-        await self.envelope('POST', f'/api/events/websocket/{self.instance}', payload=expected)
-        actual = (await self.envelope('GET', f'/api/events/getWebsocket/{self.instance}')).get('websocket') or {}
-        if any(actual.get(k) != v for k, v in expected.items()):
+        path = f'/api/events/getWebsocket/{self.instance}'
+        try:
+            actual = (await self.envelope('GET', path))['websocket']
+        except RyzeError as exc:
+            # Both an unknown instance and a new instance without WS settings return 404.
+            if exc.status != 404 or await self.connection_state() == 'unknown':
+                raise
+            actual = {}
+        events = actual.get('events', [])
+        if events is None and actual.get('enabled') is False:
+            events = []
+        if not isinstance(events, list) or not all(isinstance(e, str) for e in events):
+            raise RyzeError('Invalid WebSocket subscription')
+        wildcard = actual.get('enabled') is True and events == []
+        if (actual.get('enabled') is True and actual.get('mediaBase64') is True
+                and (wildcard or set(EVENTS).issubset(events))):
+            return
+        # The filter belongs to the instance and is shared by every WebSocket client.
+        desired = [] if wildcard else list(dict.fromkeys([*events, *EVENTS]))
+        await self.envelope('POST', f'/api/events/websocket/{self.instance}',
+                            payload={'enabled': True, 'events': desired, 'mediaBase64': True})
+        saved = (await self.envelope('GET', path)).get('websocket') or {}
+        received = saved.get('events')
+        if (saved.get('enabled') is not True or saved.get('mediaBase64') is not True
+                or not isinstance(received, list) or not all(isinstance(e, str) for e in received)
+                or (received and (wildcard or not set(desired).issubset(received)))):
             raise RyzeError('RyzeAPI WebSocket configuration not confirmed')
 
     async def contact(self, identifier):

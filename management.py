@@ -5,13 +5,16 @@ from contextlib import asynccontextmanager
 from urllib.parse import quote
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from starlette.background import BackgroundTask
+from starlette.responses import JSONResponse
+from .deployment import supervised_gateway, request_gateway_reload
 from . import settings
 from .core import allowed_numbers, phone, authorized_phone
 from .client import RyzeClient, RyzeError
 from .telemetry import EVENTS
 from .groups import GroupStore, group_id
 from . import infrastructure
-from .webhooks import confirmed, owned_hook
+from .webhooks import separate_destination, confirmed, owned_hook
 
 mutation_lock = asyncio.Lock()
 upstream_clients = None
@@ -56,7 +59,8 @@ async def protect(request: Request, response: Response):
                 or deployment['owner_issuer'] != getattr(session, 'issuer', None)):
             raise HTTPException(403, 'Conta OIDC sem permissão para administrar o RyzeAPI.')
     if request.method != 'GET':
-        if request.headers.get('origin') != deployment['public_origin']:
+        origin = request.headers.get('origin')
+        if origin != deployment['public_origin'] and not (session and origin and origin == infrastructure.webapp_origin()):
             raise HTTPException(403, 'Abra esta configuração pelo painel Hermes autenticado.')
         if request.headers.get('content-type', '').split(';')[0] != 'application/json':
             raise HTTPException(415, 'Envie os dados em JSON.')
@@ -140,13 +144,14 @@ def selected(value):
         raise HTTPException(409, 'Selecione uma instância primeiro.')
     return valid_name(value['instance']), credential(value['instance_token'])
 
-def firewall_fields(data):
+def firewall_fields(data, *, paused=False):
     raw = text(data, 'allowed_users', 300)
     outbound = text(data, 'allowed_recipients', 1000) if 'allowed_recipients' in data else raw
     try:
-        numbers, recipients = allowed_numbers(raw), allowed_numbers(outbound)
+        numbers = set() if paused and not raw else allowed_numbers(raw)
+        recipients = set() if paused and not outbound else allowed_numbers(outbound)
     except ValueError:
-        raise HTTPException(400, 'Informe números com DDI/DDD, separados por vírgula. Listas vazias e liberação para todos não são permitidas.') from None
+        raise HTTPException(400, 'Informe números com DDI/DDD separados por vírgula. Para ativar, inclua ao menos um contato que possa comandar e receber.') from None
     if not all(authorized_phone(number, recipients) for number in numbers):
         raise HTTPException(400, 'Inclua os números que comandam o Hermes também na lista de quem pode receber respostas.')
     if data.get('confirm') is not True:
@@ -178,7 +183,7 @@ async def restart():
     managed = deployment['lifecycle'] == 'coolify' or (
         deployment['lifecycle'] == 'auto' and not shutil.which('systemctl'))
     if managed:
-        # Coolify owns this process. The durable configuration is picked up at redeploy.
+        # The route schedules a verified s6 reload after the response, or reports a required redeploy.
         return False
     env = dict(os.environ, XDG_RUNTIME_DIR=f'/run/user/{os.getuid()}',
                DBUS_SESSION_BUS_ADDRESS=f'unix:path=/run/user/{os.getuid()}/bus')
@@ -193,7 +198,11 @@ async def restart():
 @router.get('/state')
 async def state():
     value = settings.load()
-    return {'credential_saved': bool(value.get('account_token')), 'credential_kind': value.get('credential_kind', 'account'),
+    group_count = 0
+    if value.get('instance') and (settings.directory() / 'groups.db').exists():
+        with GroupStore(settings.directory(), value['instance']) as store:
+            group_count = store.permitted_count()
+    return {'saved_groups': group_count, 'credential_saved': bool(value.get('account_token')), 'credential_kind': value.get('credential_kind', 'account'),
             'instance': value.get('instance', ''), 'allowed_users': value.get('allowed_users', ''),
             'allowed_recipients': settings.recipient_list(value),
             'buffer_seconds': settings.buffer_seconds(value),
@@ -232,6 +241,13 @@ async def sync_groups(request: Request):
         except ValueError: raise HTTPException(502,'Lista de grupos inválida. O catálogo anterior foi preservado.') from None
     return {'instance':name,'groups':groups}
 
+async def enable_group_events(token, name):
+    await upstream(token, 'POST', f'/api/instance/settings/{name}', payload={'ignoreGroupMessages': False})
+    readback = await upstream(token, 'GET', f'/api/instance/getSettings/{name}')
+    if (readback.get('settings') or {}).get('ignoreGroupMessages') is not False:
+        raise HTTPException(502, 'A RyzeAPI não confirmou o recebimento de grupos.')
+
+
 @router.post('/groups/policy')
 async def group_policy(request: Request):
     data = await body(request)
@@ -250,13 +266,10 @@ async def group_policy(request: Request):
                 try: store.configure(jid,mode,trigger,senders)
                 except ValueError: raise HTTPException(404,'Grupo não encontrado.') from None
             else:
-                result = await upstream(token,'POST',f'/api/instance/settings/{name}',payload={'ignoreGroupMessages':False})
-                # Ryze uses distinct routes for writing and reading settings.
-                readback = await upstream(token,'GET',f'/api/instance/getSettings/{name}')
-                if (readback.get('settings') or {}).get('ignoreGroupMessages') is not False:
-                    raise HTTPException(502,'A RyzeAPI não confirmou o recebimento de grupos. Permissão não aplicada.')
-                if value.get('webhook_configured'):
-                    await verify_hook(value, enabled=True)
+                if value.get('enabled') or value.get('webhook_configured'):
+                    await enable_group_events(token, name)
+                    if value.get('webhook_configured'):
+                        await verify_hook(value, enabled=True)
                 store.configure(jid,mode,trigger,senders)
             groups=store.list()
     return {'saved':True,'instance':name,'groups':groups}
@@ -390,6 +403,102 @@ async def read_hooks(value):
     return hooks
 
 
+def activation_conflict(value, hooks, label, url):
+    active = [h for h in hooks if h['enabled']]
+    if len(active) >= 3 and not any(owned_hook(value, h, label, url) for h in active):
+        return 'A RyzeAPI já tem três webhooks ativos nesta instância.'
+    for hook in hooks:
+        if separate_destination(hook, label, url):
+            continue
+        if hook['enabled'] and not owned_hook(value, hook, label, url):
+            return 'O label ou endereço do webhook já está em uso. Configure um destino exclusivo para este plugin.'
+        if hook['label'] == label and not hook['enabled'] and (
+                value.get('hook_label') != label or value.get('hook_instance') != value.get('instance')):
+            return 'Esse label já está reservado. Configure um label exclusivo.'
+    return ''
+
+
+@router.post('/webhook/setup')
+async def setup_webhook(request: Request):
+    data = await body(request)
+    if data.get('confirm') is not True:
+        raise HTTPException(400, 'Confirme a configuração do webhook.')
+    async with mutation():
+        value = settings.load()
+        editable(value)
+        d = infrastructure.load()
+        origin = infrastructure.webapp_origin() or d['public_origin']
+        if 'label' in data:
+            label = data['label']
+            if not isinstance(label, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,50}', label):
+                raise HTTPException(400, 'Use de 1 a 50 letras, números, traços ou sublinhados no identificador.')
+            d['webhook_label'] = label
+        if not d['webhook_url'] or data.get('use_webapp_url') is True:
+            if not origin.startswith('https://'):
+                raise HTTPException(409, 'Configure webapp.public_url com o endereço HTTPS do seu Hermes.')
+            d['webhook_url'] = origin + '/ryzeapi/events'
+        if d['lifecycle'] == 'coolify':
+            d['listener_host'] = '0.0.0.0'
+        try:
+            infrastructure.save(d)
+        except ValueError:
+            raise HTTPException(400, 'Confira o identificador e o endereço HTTPS do webhook.') from None
+        return {'webhook_url': d['webhook_url'], 'label': d['webhook_label']}
+
+
+@router.get('/webhook/config')
+async def webhook_config():
+    value = settings.load()
+    deployment = infrastructure.load()
+    origin = infrastructure.webapp_origin() or deployment['public_origin']
+    active = bool(value.get('enabled'))
+    pending = bool(value.get('hook_pending'))
+    report = dict(instance=value.get('instance', ''), webhook_url=deployment['webhook_url'],
+                  suggested_url=origin+'/ryzeapi/events' if origin.startswith('https://') else '',
+                  label=deployment['webhook_label'], enabled=active, hook_pending=pending,
+                  registered=None, events=list(EVENTS), websocket_enabled=None, websocket_connected=None,
+                  running=False, last_event_at=None,
+                  editable=not (active or pending or value.get('webhook_configured')))
+    if not report['instance'] or not value.get('instance_token'):
+        return report
+    name, token = selected(value)
+    hooks, ws, health = await asyncio.gather(
+        read_hooks(value), upstream(token, 'GET', f'/api/events/getWebsocket/{name}'),
+        read_health(value), return_exceptions=True)
+    if isinstance(hooks, list):
+        local = dict(value, hook_label=deployment['webhook_label'], hook_url=deployment['webhook_url'])
+        report['registered'] = confirmed(local, hooks)
+    if isinstance(ws, dict) and isinstance(ws.get('websocket'), dict):
+        report['websocket_enabled'] = ws['websocket'].get('enabled')
+    if isinstance(health, dict) and health:
+        report.update(running=health.get('running') is True, websocket_connected=health.get('websocket_connected'),
+                      last_event_at=health.get('last_event_at'))
+    return report
+
+
+@router.get('/activation-status')
+async def activation_status():
+    value = settings.load()
+    name, _ = selected(value)
+    deployment = infrastructure.load()
+    reasons = []
+    if not deployment['webhook_url']:
+        reasons.append('Falta configurar a URL HTTPS do webhook deste gateway.')
+    if not value.get('allowed_users') or not settings.recipient_list(value):
+        reasons.append('Salve um contato que possa comandar o Hermes e receber respostas.')
+    if value.get('hook_pending'):
+        reasons.append('Há uma alteração de webhook pendente de reconciliação.')
+    try:
+        hooks = await read_hooks(value)
+    except HTTPException:
+        reasons.append('Não foi possível verificar os webhooks da instância na RyzeAPI.')
+    else:
+        conflict = activation_conflict(value, hooks, deployment['webhook_label'], deployment['webhook_url'])
+        if conflict:
+            reasons.append(conflict)
+    return {'instance': name, 'reasons': reasons}
+
+
 async def verify_hook(value, enabled):
     label, url = hook_identity(value)
     hooks = await read_hooks(value)
@@ -434,9 +543,21 @@ async def apply_settings(value):
     raise HTTPException(503, 'O gateway não confirmou a configuração do canal.')
 
 
+def apply_after_response(result):
+    if result.get('redeploy_required') and infrastructure.load()['lifecycle'] == 'coolify':
+        service = supervised_gateway()
+        if service is not None:
+            result = dict(result, redeploy_required=False, restart_scheduled=True)
+            return JSONResponse(result, background=BackgroundTask(request_gateway_reload, service))
+    return result
+
+
 @router.post('/activate')
 async def activate(request: Request):
-    permissions = firewall_fields(await body(request))
+    return apply_after_response(await activate_channel(await body(request)))
+
+
+async def activate_channel(data):
     deployment = infrastructure.load()
     label = deployment['webhook_label']
     url = deployment['webhook_url']
@@ -445,19 +566,27 @@ async def activate(request: Request):
     async with mutation():
         value = settings.load()
         name, token = selected(value)
+        if data.get('instance', name) != name:
+            raise HTTPException(409, 'A instância mudou. Reabra as configurações antes de ativar.')
+        permissions = firewall_fields(data)
+        if data.get('use_saved') and (permissions['allowed_users'] != value.get('allowed_users') or
+                                      permissions['allowed_recipients'] != settings.recipient_list(value)):
+            raise HTTPException(409, 'As permissões mudaram. Reabra as configurações antes de ativar.')
         if value.get('enabled') or value.get('hook_pending'):
             raise HTTPException(409, 'Pause e reconcilie o canal antes de reativar.')
         item = next((i for i in await instances(token, name) if i.get('name') == name), None)
         if not item or public_instance(item)['status'] != 'connected':
             raise HTTPException(409, 'Conecte o WhatsApp antes de ativar o Hermes.')
         hooks = await read_hooks(value)
-        for hook in hooks:
-            if hook['enabled'] and not owned_hook(value, hook, label, url):
-                raise HTTPException(409, 'Já existe um receptor ativo nesta instância. Escolha uma instância dedicada.')
-            if hook['label'] == label and not hook['enabled'] and (
-                    value.get('hook_label') != label or value.get('hook_instance') != name):
-                raise HTTPException(409, 'Esse label já está reservado. Configure um label exclusivo.')
-        value.update(**permissions, enabled=False, hook_pending=True, hook_url=url, hook_label=label, hook_instance=name,
+        conflict = activation_conflict(value, hooks, label, url)
+        if conflict:
+            raise HTTPException(409, conflict)
+        if (settings.directory() / 'groups.db').exists():
+            with GroupStore(settings.directory(), name) as store:
+                groups_enabled = store.permitted_count() > 0
+            if groups_enabled:
+                await enable_group_events(token, name)
+        value.update(**permissions, enabled=False, hook_pending=True, hook_url=url, hook_label=label, hook_instance=name, hook_events=list(EVENTS), independent_webhook=True,
                      webhook_secret=value.get('webhook_secret') or secrets.token_urlsafe(48))
         settings.save(value)
         try:
@@ -479,10 +608,13 @@ async def activate(request: Request):
 
 @router.post('/firewall')
 async def firewall(request: Request):
-    permissions = firewall_fields(await body(request))
+    data = await body(request)
     async with mutation():
         value = settings.load()
-        selected(value)
+        name, _ = selected(value)
+        if data.get('instance', name) != name:
+            raise HTTPException(409, 'A instância mudou. Reabra as configurações antes de salvar.')
+        permissions = firewall_fields(data, paused=not value.get('enabled'))
         value.update(permissions)
         settings.save(value)
         running = False
@@ -494,8 +626,8 @@ async def firewall(request: Request):
                 settings.save(value)
                 await disable_hook(value)
                 raise
-    return {'saved': True, 'enabled': bool(value.get('enabled')),
-            'redeploy_required': bool(value.get('enabled') and not running), **permissions}
+    return apply_after_response({'saved': True, 'enabled': bool(value.get('enabled')),
+            'redeploy_required': bool(value.get('enabled') and not running), **permissions})
 
 
 @router.post('/pause')
@@ -503,11 +635,13 @@ async def pause(request: Request):
     await body(request)
     async with mutation():
         value = settings.load()
+        was_enabled = bool(value.get('enabled'))
         value['enabled'] = False
         settings.save(value)
         await disable_hook(value)
-        await restart()
-    return {'enabled': False, 'webhook_configured': False}
+        restarted = await restart()
+    return apply_after_response({'enabled': False, 'webhook_configured': False,
+                                 'redeploy_required': was_enabled and restarted is False})
 
 
 @router.post('/forget')

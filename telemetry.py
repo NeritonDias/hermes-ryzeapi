@@ -3,7 +3,8 @@ import hashlib, time
 from datetime import datetime
 from .core import authorized_phone
 
-EVENTS = ['message.exchange', 'instance.state', 'message.status', 'group.flow']
+MESSAGE_EVENTS = ['message.exchange', 'instance.state', 'message.status', 'group.flow']
+EVENTS = [*MESSAGE_EVENTS, 'call.update', 'label.update']
 STATES = {'connected','disconnected','logged_out','stream_replaced','temp_banned','client_outdated',
           'connect_failure','stream_error','cat_refresh_error','qr_ready','pair_success','pair_error',
           'qr_scanned_no_multidevice','keepalive_timeout','keepalive_restored','manual_reconnect','connecting','unknown'}

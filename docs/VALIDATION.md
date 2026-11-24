@@ -1,5 +1,21 @@
 # Release validation
 
+## 0.14.3
+
+Validated on the official Hermes v0.23.4 ARM64 image. The actual disposable plugin worker reached Hermes STT in a subprocess. Offline Whisper Small Q5_1 decoded a Portuguese Ogg/Opus fixture and produced a nonempty transcript for an incoming MP3. The private recording and its transcript are excluded from this repository.
+
+## 0.14.2
+
+The official Hermes v0.23.4 Linux ARM64 image passed 234 backend tests. Chromium exercised all five views on an isolated Oracle instance at 390, 820 and 1440 pixels, including a 580-pixel Hermes content pane. The Webhooks editor rejected an invalid label, saved a valid label through the actual plugin API, and restored the saved value after reload. These browser fixtures used synthetic provider responses. Two separate Webapp configurations produced their own callback URLs, including one with an explicit HTTPS port.
+
+A separate production check observed one authorized message on both transports, one admission to the gateway, and one accepted outbound text. Tenant-specific screenshots and production data are retained privately.
+
+[Webhooks editor with synthetic data](screens/webhooks-1440.png)
+
+## 0.14.1 — 2026-11-24
+
+All 228 backend tests passed on Linux ARM64 with the official Hermes v0.23.4 image. Chromium exercised the generated Webapp extension against the plugin REST API in an isolated profile using synthetic provider data. A receive-only contact and a listen-only group survived a full page reload. The channel stayed paused.
+
 ## 0.14.0 stable — 2026-11-24
 
 Verified on Linux ARM64 in the official Hermes 0.23.4 image. All 227 backend tests passed. Native Plugin Doctor registered the fourteen agent tools. Coverage includes conflicting receivers, ownership after uncertain webhook writes, authorization of the management API, private file reads, deduplication and operation with the Webapp port already occupied.

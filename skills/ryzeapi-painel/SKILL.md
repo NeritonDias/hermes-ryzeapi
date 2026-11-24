@@ -1,7 +1,7 @@
 ---
 name: ryzeapi-painel
 description: "Configurar e verificar o painel WhatsApp da RyzeAPI."
-version: 0.14.0
+version: 0.14.3
 author: Neriton Dias
 license: MIT
 metadata:

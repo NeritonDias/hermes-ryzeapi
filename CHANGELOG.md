@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.14.3
+
+Fixed the voice worker importing the plugin’s tools module instead of Hermes transcription tools. The receiver reports redacted STT failure categories and respects disabled transcription. A local whisper.cpp command adapter normalizes voice notes for CPU inference on self-hosted installations.
+
+## 0.14.2
+
+The new Webhooks page uses the public URL of the installed Hermes profile. It shows remote registration and both ends of the WebSocket connection, lets the owner edit the paused receiver, and copies its callback address. On the official Coolify/s6 image, the gateway can gracefully apply changes after returning the management response.
+
+The Webapp reports activation blockers for the selected instance. The receiver subscribes to all six RyzeAPI event families via webhook and WebSocket. Call and label notifications are observed without triggering replies. WebSocket provisioning handles a new instance with no saved settings, reordered subscriptions and an existing all-events subscription. The plugin manages its own label and endpoint. Other destinations retain their own subscriptions.
+
+## 0.14.1
+
+Saving contact permissions and group policies works while the channel is paused. Activation is a separate action. The overview shows saved permission counts. The provider's group event settings are applied when the channel is activated.
+
 ## 0.14.0 — 2026-11-24
 
 Stable Hermes v0.23.4 release. The Webapp and Dashboard share a responsive control panel. Coolify deployments use an internal listener on 9131 and explicit gateway redeploy. The controller reconciles webhook ownership, and outbound file reads are confined to the profile attachment directory. Inbound and outbound idempotency remain durable.

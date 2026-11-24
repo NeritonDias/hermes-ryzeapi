@@ -7,7 +7,7 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
   const h = React.createElement;
   const states = { connected: 'Conectado', connecting: 'Conectando', disconnected: 'Desconectado', loggedout: 'Desconectado', unknown: 'Não confirmado', qr: 'Aguardando leitura' };
   const channelStates = { ...states, logged_out: 'Sessão encerrada', qr_ready: 'Aguardando QR', pair_success: 'Pareado; aguardando conexão', temp_banned: 'Restrição temporária', keepalive_timeout: 'Conexão instável', keepalive_restored: 'Conexão restabelecida' };
-  const dateText = seconds => seconds ? new Date(seconds * 1000).toLocaleString('pt-BR') : 'Sem registro';
+  const dateText = seconds => seconds ? new Date(seconds * 1000).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'Sem registro';
   const timingStages = [['buffer','Espera do buffer'],['identity','Identificação do contato'],
     ['media_download','Download de anexos'],['stt_queue','Fila de transcrição'],['stt_execution','Transcrição do áudio'],
     ['preparation','Preparação do lote'],['gateway_handoff','Encaminhamento ao Hermes'],
@@ -47,6 +47,7 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
     if (error?.status === 504) return 'A solicitação demorou demais. Atualize o estado antes de tentar novamente.';
     return 'Não foi possível confirmar a operação. Atualize o estado antes de tentar novamente.';
   }
+  const quantity = (count, one, many) => count + ' ' + (count === 1 ? one : many);
   const numbers = value => [...new Set(String(value || '').split(/[\s,;]+/).filter(Boolean))];
   function Contacts({ owners, recipients, onChange, disabled }) {
     const [number, setNumber] = useState(''), [message, setMessage] = useState('');
@@ -72,7 +73,7 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
       h('p', { id: 'ryze-contact-help', className: 'ryze-help' }, 'DDI + DDD + número. Não libera grupos nem contatos fora desta lista.'),
       message && h('p', { role: 'status', className: 'ryze-help' }, message));
   }
-  function Groups({ instance, drafts, setDrafts, picked, setPicked, disabled }) {
+  function Groups({ instance, drafts, setDrafts, picked, setPicked, disabled, onSaved }) {
     const [rows, setRows] = useState(null), [search, setSearch] = useState('');
     const [open, setOpen] = useState(false), [cursor, setCursor] = useState(-1), [activeGroup, setActiveGroup] = useState('');
     const [removing, setRemoving] = useState('');
@@ -92,6 +93,7 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
         if (!mounted.current) return;
         if (result.instance !== instance) throw new Error('Instance changed');
         setRows(result.groups);
+        onSaved(result.groups.filter(row => row.present && row.mode !== 'blocked').length);
         if (data.jid) {
           setDrafts(previous => { const next = { ...previous }; delete next[instance + ':' + data.jid]; return next; });
           setActiveGroup(''); setRemoving('');
@@ -147,7 +149,7 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
     useEffect(() => { if (open && cursor >= 0) document.getElementById('ryze-group-option-' + cursor)?.scrollIntoView({ block: 'nearest' }); }, [open, cursor]);
     return h('section', { className: 'ryze-firewall ryze-groups', 'aria-labelledby': 'ryze-groups-title', 'aria-busy': !!busy },
       h('div', { className: 'ryze-group-heading' }, h('div', null,
-        h('h3', { id: 'ryze-groups-title' }, 'Firewall de grupos'),
+        h('h3', { id: 'ryze-groups-title', tabIndex: -1 }, 'Firewall de grupos'),
         h('p', { className: 'ryze-help' }, 'Grupos da instância ', instance, '. Sincronizar não libera acesso.')),
         h(Button, { type: 'button', outlined: true, disabled: !!busy || disabled,
           onClick: () => action('Sincronizando grupos…', '/groups/sync', {}) }, busy === 'Sincronizando grupos…' ? busy : 'Listar / sincronizar grupos')),
@@ -189,7 +191,7 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
                   h('span', null, row.name), h('small', null, row.jid, chosen.some(item => item.jid === row.jid) ? ' · Selecionado' : '')))),
               !visible.length && h('p', { role: 'status' }, 'Nenhum grupo corresponde à busca.')))),
         h('p', { id: 'ryze-group-picker-help', className: 'ryze-help' }, 'Clique no nome de um grupo para editar; no X para remover e bloquear. Adicionar à seleção só libera acesso depois de salvar.'),
-        h('p', { className: 'ryze-help', role: 'status' }, chosen.length, ' selecionados · ', rows.length, ' disponíveis · Última sincronização: ', dateText(Math.max(...rows.map(r => r.synced || 0)))),
+        h('p', { className: 'ryze-help', role: 'status' }, quantity(chosen.length, 'selecionado', 'selecionados'), ' · ', quantity(rows.length, 'disponível', 'disponíveis'), ' · Última sincronização: ', dateText(Math.max(...rows.map(r => r.synced || 0)))),
         !chosen.length && h('p', null, 'Nenhum grupo selecionado. Abra a busca para escolher.'),
         removalGroup && h('section', { className: 'ryze-group-removal', 'aria-labelledby': 'ryze-group-remove-title' },
           h('h4', { id: 'ryze-group-remove-title', tabIndex: -1 }, 'Remover ', removalGroup.name, '?'),
@@ -210,7 +212,7 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
           return h('article', { id: 'ryze-group-editor', key: row.jid, className: 'ryze-group-row', 'aria-label': row.name },
             h('div', { className: 'ryze-group-editor-heading' },
               h('div', { className: 'ryze-group-identity' }, h('h4', { id: 'ryze-group-editor-title', tabIndex: -1 }, 'Editar ', row.name), h('p', { className: 'ryze-help' }, row.jid),
-                h('p', null, 'Salvo: ', labels[row.mode], !row.present ? ' · Não encontrado na última sincronização' : row.members == null ? '' : ' · ' + row.members + ' membros')),
+                h('p', null, 'Salvo: ', labels[row.mode], !row.present ? ' · Não encontrado na última sincronização' : row.members == null ? '' : ' · ' + quantity(row.members, 'membro', 'membros'))),
               h('button', { type: 'button', className: 'ryze-link', disabled: !!busy || disabled, onClick: closeEditor }, 'Fechar edição')),
             h('div', { className: 'ryze-group-controls' },
               select('mode', 'Modo do grupo', [['blocked','Bloqueado'],['listen','Só ouvir'],['respond','Ouvir e responder']], !row.present),
@@ -226,7 +228,128 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
         }))),
       h('p', { className: 'ryze-help' }, 'Arquivo na VPS: grupo / data (horário de Brasília), com ID, número e nome do autor quando disponíveis. A pasta só nasce com atividade em um grupo liberado. Entradas e saídas também são registradas. Sincronizar não importa histórico. Anexos são identificados no registro; este arquivo não é uma cópia dos arquivos de mídia.'));
   }
-  function App() {
+  function Webhooks({ state, busy, blockers, canActivate, onActivate, onPause, onRefresh, onSaved, run, feedback }) {
+    const [config, setConfig] = useState(null), [readError, setReadError] = useState('');
+    const [draft, setDraft] = useState(null), [useOrigin, setUseOrigin] = useState(false);
+    const [copied, setCopied] = useState('');
+    const request = useRef(0), endpoint = useRef(null);
+    async function read() {
+      const id = ++request.current;
+      setReadError('');
+      try {
+        const next = await api('/webhook/config');
+        if (request.current === id) setConfig(next);
+      } catch (error) {
+        if (request.current === id) {
+          setConfig(null);
+          setReadError(errorText(error));
+        }
+      }
+    }
+    useEffect(() => {
+      read();
+      return () => { request.current += 1; };
+    }, [state.instance]);
+    const label = draft ?? config?.label ?? '';
+    const labelValid = /^[A-Za-z0-9_-]{1,50}$/.test(label);
+    const suggested = config?.suggested_url || '';
+    const saved = config?.webhook_url || '';
+    const address = (useOrigin || !saved) ? suggested : saved;
+    const changed = !!config && (label !== config.label || address !== saved);
+    const editable = !!config?.editable;
+    const blocked = !canActivate || !config?.webhook_url || !editable || changed;
+    function reload() {
+      setCopied('');
+      return run('Atualizando estado…', async () => {
+        try { await onRefresh(); } finally { await read(); }
+      });
+    }
+    async function copyAddress() {
+      try {
+        await navigator.clipboard.writeText(address);
+        setCopied('Endereço copiado.');
+      } catch (_) {
+        endpoint.current?.focus();
+        endpoint.current?.select();
+        setCopied('Endereço selecionado. Use o comando de copiar do navegador.');
+      }
+    }
+    function save(event) {
+      event.preventDefault();
+      if (!editable || !changed || !address || !labelValid || busy) return;
+      run('Salvando webhook…', async () => {
+        await api('/webhook/setup', { confirm: true, label, use_webapp_url: useOrigin || !saved });
+        setDraft(null); setUseOrigin(false); onSaved();
+        try { await onRefresh(); } finally { await read(); }
+      });
+    }
+    const action = (text, click, disabled = false, outlined = true) =>
+      h(Button, { type: 'button', disabled: !!busy || disabled, outlined, onClick: click }, text);
+    const observed = (value, yes, no) => value === true ? yes : value === false ? no : 'Não confirmado';
+    const rows = config ? [
+      ['Registro na RyzeAPI', config.hook_pending ? 'Aguardando confirmação' : observed(config.registered, 'Registrado', 'Sem registro ativo'), config.registered === true && !config.hook_pending],
+      ['Receptor no Hermes', config.hook_pending ? 'Reconciliação pendente' : config.enabled ? (config.running ? 'Em execução' : 'Execução não confirmada') : 'Pausado', config.enabled && config.running && !config.hook_pending],
+      ['WebSocket na RyzeAPI', observed(config.websocket_enabled, 'Habilitado', 'Desabilitado'), config.websocket_enabled],
+      ['WebSocket no Hermes', observed(config.websocket_connected, 'Conectado', 'Desconectado'), config.websocket_connected]
+    ] : [];
+    const eventNames = { 'message.exchange': 'Mensagens', 'message.status': 'Recibos de mensagens', 'instance.state': 'Estado da instância', 'group.flow': 'Atividade de grupos', 'call.update': 'Chamadas', 'label.update': 'Etiquetas' };
+    const reasons = [...blockers];
+    if (!state.instance) reasons.push('Vincule uma instância em RyzeAPI para ativar o receptor.');
+    else if (!state.allowed_users && !reasons.length) reasons.push('Salve um contato com permissão para comandar o Hermes.');
+    if (changed) reasons.push('Salve as alterações do webhook antes de ativar.');
+    const confirmState = (text, fn) => run(text, async () => {
+      try { await fn(); } finally { await read(); }
+    });
+    return h('section', { className: 'ryze-page ryze-hooks', lang: 'pt-BR', 'aria-labelledby': 'ryze-hooks-title', 'aria-busy': !!busy },
+      h('nav', {className: 'ryze-crumb', 'aria-label': 'Caminho da página'},
+        h('a', {href: '#/ryzeapi'}, 'RyzeAPI'), icon('arrow'), h('span', {'aria-current': 'page'}, 'Webhooks')),
+      h('header', {className: 'ryze-hooks-header'},
+        h('div', null, h('h1', {id: 'ryze-hooks-title'}, 'Webhooks do RyzeAPI'),
+          h('p', null, state.instance ? 'Recebimento de eventos da instância ' : 'Recebimento de eventos pelo Hermes', state.instance && h('strong', null, state.instance))),
+        action(h(React.Fragment, null, icon('refresh'), 'Atualizar estado'), reload)),
+      feedback,
+      readError && h('p', {role: 'alert'}, readError),
+      !config && !readError && h('p', {role: 'status'}, 'Consultando o receptor e a RyzeAPI…'),
+      config && h('div', {className: 'ryze-hooks-layout'},
+        h('div', {className: 'ryze-hook-settings'},
+          h('section', {className: 'ryze-hook-section', 'aria-labelledby': 'ryze-destination'},
+            h('h2', {id: 'ryze-destination'}, 'Destino do webhook'),
+            h('form', {onSubmit: save},
+              h(Label, {htmlFor: 'ryze-hook-url'}, !saved || useOrigin ? 'Endereço deste Hermes' : 'Endereço de recebimento'),
+              address ? h('div', {className: 'ryze-endpoint'}, h('span', null, 'POST'),
+                h('input', {id: 'ryze-hook-url', ref: endpoint, value: address, readOnly: true, spellCheck: false}),
+                action('Copiar URL', copyAddress)) :
+                h('p', {id: 'ryze-hook-url', className: 'ryze-help'}, 'Defina o endereço HTTPS do Webapp em webapp.public_url para gerar a URL do webhook.'),
+              h('p', {className: 'ryze-copy-status', role: 'status'}, copied),
+              editable && saved && suggested && saved !== suggested && h('label', {className: 'ryze-check'},
+                h('input', {type: 'checkbox', checked: useOrigin, disabled: !!busy, onChange: e => {setUseOrigin(e.target.checked); setCopied('');}}),
+                'Usar endereço deste Hermes'),
+              h('div', {className: 'ryze-field'},
+                h(Label, {htmlFor: 'ryze-hook-label'}, 'Identificador na RyzeAPI'),
+                h(Input, {id: 'ryze-hook-label', value: label, disabled: !editable || !!busy, maxLength: 50,
+                  spellCheck: false, autoCapitalize: 'none', autoComplete: 'off', 'aria-invalid': editable && !labelValid,
+                  'aria-describedby': 'ryze-label-help', onChange: e => setDraft(e.target.value)}),
+                h('p', {id: 'ryze-label-help', className: 'ryze-help'}, editable ? 'Use de 1 a 50 letras sem acento, números, hífens ou sublinhados.' :
+                  (config.hook_pending ? 'Reconcilie o registro para editar o destino.' : 'Pause o receptor para editar o destino.'))),
+              editable && h(Button, {type: 'submit', disabled: !!busy || !changed || !labelValid || !address}, 'Salvar webhook'))),
+          h('section', {className: 'ryze-hook-section', 'aria-labelledby': 'ryze-hook-events'},
+            h('h2', {id: 'ryze-hook-events'}, 'Eventos do plugin'),
+            h('p', {className: 'ryze-help'}, 'O webhook e o WebSocket recebem os mesmos tipos de evento. O Hermes descarta mensagens duplicadas.'),
+            h('ul', {className: 'ryze-event-list'}, ...config.events.map(key =>
+              h('li', {key}, h('span', null, eventNames[key] || key), h('code', null, key)))))),
+        h('aside', {className: 'ryze-hook-health', 'aria-labelledby': 'ryze-hook-delivery'},
+          h('h2', {id: 'ryze-hook-delivery'}, 'Estado da entrega'),
+          h('dl', {className: 'ryze-hook-readings'}, ...rows.map(([title, value, ok]) => h('div', {key: title},
+            h('dt', null, title), h('dd', null, h('span', {className: 'ryze-dot ' + (ok ? 'is-good' : 'is-muted'), 'aria-hidden': true}), value)))),
+          h('p', {className: 'ryze-last-event'}, h('span', null, 'Último evento recebido'), h('strong', null, config.last_event_at ? dateText(config.last_event_at) + ' · Brasília' : 'Sem registro')),
+          config.enabled || config.hook_pending || !editable ? h(React.Fragment, null,
+            action(config.hook_pending ? 'Reconciliar e pausar' : 'Pausar receptor', () => confirmState('Pausando receptor…', onPause)),
+            h('p', {className: 'ryze-help'}, 'Pausar interrompe o atendimento do Hermes nesta instância.')) :
+            h(React.Fragment, null, action('Ativar receptor', () => confirmState('Ativando receptor…', onActivate), blocked, false),
+              reasons.length ? h('ul', {className: 'ryze-blockers'}, ...[...new Set(reasons)].map(reason => h('li', {key: reason}, reason))) :
+                h('p', {className: 'ryze-help'}, canActivate ? 'O Hermes responderá aos contatos e grupos autorizados.' : 'Verifique a conexão do WhatsApp e os requisitos de ativação.')))));
+  }
+  function App({ webhooksPage = false, webapp = false } = {}) {
     const [state, setState] = useState(null), [step, setStep] = useState(0);
     const [tab, setTab] = useState(0), [inspected, setInspected] = useState('');
     const [updatedAt, setUpdatedAt] = useState(null);
@@ -243,6 +366,20 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
     const [pickedGroups, setPickedGroups] = useState({});
     const [buffer, setBuffer] = useState('10');
     const [echoTranscripts, setEchoTranscripts] = useState(true);
+    const [activation, setActivation] = useState(null);
+    const [activationRevision, setActivationRevision] = useState(0);
+    useEffect(() => {
+      const instance = state?.instance;
+      if (!instance || state.enabled) return;
+      let current = true;
+      api('/activation-status').then(result => {
+        if (current && result.instance === instance) setActivation(result);
+      }).catch(() => {
+        if (current) setActivation({instance, reasons: ['Não foi possível verificar os requisitos de ativação. Clique em Atualizar.']});
+      });
+      return () => { current = false; };
+    }, [state?.instance, state?.enabled, state?.allowed_users, state?.allowed_recipients, state?.webhook_url, state?.hook_pending, activationRevision]);
+    const blockers = activation?.instance === state?.instance ? (activation?.reasons || []) : [];
     const [transport, setTransport] = useState(null), [transportError, setTransportError] = useState(false);
     const transportRequest = useRef(0);
     async function refreshDiagnostics() {
@@ -266,8 +403,8 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
       const next = await api('/state');
       if (alive.current) {
         setState(next);
-        if (!hydrated.current) {
-          hydrated.current = true;
+        if (hydrated.current !== next.instance) {
+          hydrated.current = next.instance;
           setOwners(next.allowed_users || ''); setKind(next.credential_kind || 'account');
           setRecipients(next.allowed_recipients || next.allowed_users || '');
           setBuffer(String(next.buffer_seconds ?? 10)); setEchoTranscripts(next.echo_transcripts ?? true);
@@ -296,14 +433,14 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
       alive.current = true;
       run('Carregando configuração…', async () => {
         const next = await refresh();
-        if (next.instance) await checkConnection();
+        if (next.instance && (!webhooksPage || !next.enabled)) await checkConnection();
       });
       return () => { alive.current = false; };
-    }, []);
+    }, [webhooksPage]);
     useEffect(() => { if (error) feedback.current?.focus(); }, [error]);
     useEffect(() => {
       setTransport(null); setTransportError(false);
-      if (!state?.enabled) return;
+      if (!state?.enabled || webhooksPage) return;
       let disposed = false, timer;
       async function tick() {
         if (disposed) return;
@@ -314,13 +451,13 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
       }
       tick();
       return () => { disposed = true; clearTimeout(timer); transportRequest.current += 1; };
-    }, [state?.enabled, state?.instance]);
+    }, [state?.enabled, state?.instance, webhooksPage]);
     useEffect(() => {
-      if (!state?.credential_saved) return;
+      if (!state?.credential_saved || webhooksPage) return;
       let disposed = false;
       api('/instances').then(result => { if (!disposed) { setItems(result.instances); setListLoaded(true); } }).catch(() => {});
       return () => { disposed = true; };
-    }, [state?.credential_saved, state?.instance]);
+    }, [state?.credential_saved, state?.instance, webhooksPage]);
     useEffect(() => { if (focusView.current) { focusView.current = false; viewTitle.current?.focus(); } }, [tab, step, inspected]);
     useEffect(() => {
       const handler = e => { if (Object.keys(groupDrafts).length || state && (buffer !== String(state.buffer_seconds ?? 10) || echoTranscripts !== (state.echo_transcripts ?? true) || owners !== (state.allowed_users || '') || recipients !== (state.allowed_recipients || ''))) { e.preventDefault(); e.returnValue = ''; } };
@@ -381,10 +518,10 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
       else { const stamp = Date.now(); setNow(stamp); setCode({ ...result, expiresAt: stamp + result.expires_in * 1000 }); }
     }
     async function saveFirewall(activate) {
-      const applied = await api(activate ? '/activate' : '/firewall', { allowed_users: owners, allowed_recipients: recipients, confirm: permit });
+      const applied = await api(activate ? '/activate' : '/firewall', { instance: state.instance, use_saved: activate, allowed_users: owners, allowed_recipients: recipients, confirm: activate || permit });
       const next = await refresh(); setOwners(next.allowed_users || ''); setRecipients(next.allowed_recipients || ''); setPermit(false);
       if (activate) await refreshDiagnostics();
-      setNotice(applied.redeploy_required ? 'Configuração salva. Faça o redeploy deste gateway no Coolify e atualize o estado.' : activate ? 'Hermes ativado com firewall. Envie uma mensagem pelo seu número autorizado para testar.' : 'Firewall salvo. O canal só pode enviar para os destinatários da lista.');
+      setNotice(applied.restart_scheduled ? 'Configuração salva. O gateway está reiniciando. Atualize o estado em instantes.' : applied.redeploy_required ? 'Configuração salva. Faça o redeploy deste gateway no Coolify e atualize o estado.' : activate ? 'Hermes ativado com firewall. Envie uma mensagem pelo seu número autorizado para testar.' : next.enabled ? 'Firewall salvo.' : 'Firewall salvo. As permissões estão gravadas e o canal continua pausado.');
     }
     const localFeedback = scope => feedbackScope === scope && h('div', { className: 'ryze-feedback' },
       error && h('p', { role: 'alert', tabIndex: -1, ref: feedback }, error),
@@ -415,6 +552,13 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
               item.status === 'expired' ? 'Expirada' : 'Execução incerta', ' · referência ', h('code', null, item.reference), ' · ', dateText(item.created)))) : h('p', null, 'Nenhuma mensagem incerta ou expirada registrada.'),
             h('p', { className: 'ryze-help' }, 'Confira a conversa antes de enviar uma nova instrução. Registros incertos nunca são reexecutados automaticamente.'))));
     let content;
+    const webhookSection = state && h('section', {className: 'ryze-firewall', 'aria-labelledby': 'ryze-hook-title'},
+        h('h3', {id: 'ryze-hook-title'}, 'Webhook do plugin'),
+        state.webhook_url ? h('p', null, 'Endereço de recebimento: ', h('code', null, state.webhook_url)) :
+          button('Usar webhook deste Webapp', () => run('Configurando webhook…', async () => {
+            await api('/webhook/setup', {confirm: true}); await refresh();
+          })),
+        h('p', {className: 'ryze-help'}, 'O proxy deve encaminhar POST /ryzeapi/events à porta interna do receptor (padrão 9131). Ao ativar o Hermes, o plugin registra seu webhook autenticado e conecta o WebSocket.'));
     if (!state) content = h('div', null, h('p', null, busy || 'Não foi possível carregar a configuração.'), !busy && button('Tentar novamente', () => run('Carregando…', refresh)));
     else if (step === 0) content = h(React.Fragment, null,
       h('h2', null, state.credential_saved ? 'Acesso RyzeAPI salvo' : 'Conecte sua conta RyzeAPI'),
@@ -463,7 +607,7 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
         h('div', null, h('strong', null, connected ? 'WhatsApp conectado' : 'Aguardando conexão do WhatsApp'),
           h('p', { className: 'ryze-help' }, connected ? 'Conexão confirmada pela RyzeAPI. O QR foi removido com segurança.' : code ? 'Escaneie o QR. Esta tela confirma automaticamente quando conectar.' : 'Gere um QR Code para iniciar a conexão.'))),
       h('p', { className: 'ryze-poll-note' }, pollMessage, ' Continua verificando enquanto esta etapa estiver aberta e visível.'),
-      connected ? h('div', null, h('p', null, 'WhatsApp conectado', connection.number ? ' · +' + connection.number : '', active ? '. Hermes ativo neste canal.' : '. Falta autorizar quem pode comandar o Hermes.'),
+      connected ? h('div', null, h('p', null, 'WhatsApp conectado', connection.number ? ' · +' + connection.number : '', active ? '. Hermes ativo neste canal.' : '. Consulte as permissões e o estado do canal em Configurações.'),
         button(active ? 'Ver estado do Hermes' : 'Configurar firewall e ativar', () => changeStep(3))) : h(React.Fragment, null,
         h('p', null, 'No WhatsApp do celular, abra Configurações → Dispositivos conectados → Conectar dispositivo.'),
         button(code ? 'Gerar novo QR Code' : 'Gerar QR Code', () => run('Solicitando QR Code… Pode levar até um minuto.', () => generate(false))),
@@ -478,16 +622,15 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
             submit('Gerar código de pareamento', !number)))),
       h('div', { className: 'ryze-actions' }, button('Atualizar conexão', () => run('Consultando conexão…', checkConnection), false, true)));
     else content = h(React.Fragment, null,
-      h('h2', null, state.enabled ? 'Hermes habilitado neste canal' : 'Hermes protegido por contatos autorizados'),
+      h('h3', {id: 'ryze-channel-settings', tabIndex: -1}, state.enabled ? 'Hermes habilitado neste canal' : 'Hermes protegido por contatos autorizados'),
       h('p', { className: 'ryze-intro' }, state.enabled ? 'A configuração está salva. Consulte Métricas para confirmar o funcionamento do transporte e do processamento.' : 'Conectar o WhatsApp não libera o agente. Configure as duas permissões antes de ativar.'),
       state.enabled && h('div', null,
         !active && h('p', { role: 'alert' }, 'A configuração está habilitada, mas a execução ainda não foi confirmada. Atualize o estado ou pause o canal.'),
-        h('p', null, 'Números autorizados: ', state.allowed_users),
-        button('Atualizar estado', () => run('Verificando gateway…', async () => { await refresh(); await refreshDiagnostics(); }), false, true),
-        h('div', { className: 'ryze-actions' }, button('Pausar Hermes neste canal', () => run('Pausando canal…', async () => { await api('/pause', {}); await refresh(); setNotice('Canal pausado. Novas mensagens não serão processadas; o WhatsApp continua conectado.'); }), false, true)),
+        h('p', null, 'Contatos com permissão para comandar: ', String(numbers(state.allowed_users).length)),
+        h('div', { className: 'ryze-actions' }, button('Pausar Hermes neste canal', () => run('Pausando canal…', async () => { const result = await api('/pause', {}); await refresh(); setNotice(result.restart_scheduled ? 'Pausa salva. O gateway está reiniciando. Atualize o estado em instantes.' : 'Canal pausado. O WhatsApp continua conectado.'); }), false, true)),
         h('p', { className: 'ryze-help' }, 'Pausar não encerra tarefas já aceitas pelo agente.')),
       h('section', { className: 'ryze-firewall', 'aria-labelledby': 'ryze-buffer-title' },
-        h('h3', { id: 'ryze-buffer-title' }, 'Buffer de mensagens'),
+        h('h3', { id: 'ryze-buffer-title', tabIndex: -1 }, 'Buffer de mensagens'),
         localFeedback('buffer'),
         dirty(buffer !== String(state.buffer_seconds ?? 10), () => setBuffer(String(state.buffer_seconds ?? 10))),
         h('p', null, 'Reúna textos, áudios, imagens e arquivos antes de pedir uma resposta à IA. Cada nova mensagem do mesmo contato reinicia a espera.'),
@@ -504,7 +647,7 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
             h('span', { className: 'ryze-help' }, 'Salvo: ', (state.buffer_seconds ?? 10) === 0 ? 'sem espera' : (state.buffer_seconds ?? 10) + ' s'))),
         h('p', { className: 'ryze-help' }, 'Ao terminar a espera, o lote segue junto para análise. Limite de segurança: 2 minutos ou 20 mensagens por lote. Comandos como /stop não aguardam o buffer.')),
       h('section', { className: 'ryze-firewall', 'aria-labelledby': 'ryze-transcription-title' },
-        h('h3', { id: 'ryze-transcription-title' }, 'Transcrição de áudios'),
+        h('h3', { id: 'ryze-transcription-title', tabIndex: -1 }, 'Transcrição de áudios'),
         localFeedback('transcription'),
         dirty(echoTranscripts !== (state.echo_transcripts ?? true), () => setEchoTranscripts(state.echo_transcripts ?? true)),
         form(() => run('Salvando transcrições…', async () => {
@@ -522,19 +665,25 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
           h('div', { className: 'ryze-actions' }, submit('Salvar transcrições'),
             h('span', { className: 'ryze-help' }, 'Salvo: ', (state.echo_transcripts ?? true) ? 'enviar na conversa' : 'somente para a IA'))),
         h('p', { className: 'ryze-help' }, 'Os áudios mantêm sua posição na sequência de mensagens. Esta opção não altera o buffer nem o firewall.')),
+      webapp ? h('section', {className: 'ryze-firewall'}, h('h3', null, 'Recebimento de eventos'), h('a', {href: '#/ryzeapi/webhooks', className: 'ryze-link'}, 'Gerenciar webhooks', icon('arrow'))) : webhookSection,
       h('section', { className: 'ryze-firewall', 'aria-labelledby': 'ryze-firewall-title' },
-        h('h3', { id: 'ryze-firewall-title' }, 'Firewall de contatos'),
+        h('h3', { id: 'ryze-firewall-title', tabIndex: -1 }, 'Firewall de contatos'),
         localFeedback('firewall'),
         dirty(owners !== (state.allowed_users || '') || recipients !== (state.allowed_recipients || ''), () => { setOwners(state.allowed_users || ''); setRecipients(state.allowed_recipients || ''); setPermit(false); }),
         h('p', null, 'Mensagens privadas só podem ser enviadas aos contatos desta lista. Autorizar o recebimento não permite comandar o agente. Grupos têm permissões próprias na seção abaixo.'),
-        form(() => run(state.enabled || !connected ? 'Salvando firewall…' : 'Ativando com firewall…', () => saveFirewall(!state.enabled && connected)),
+        form(() => run('Salvando firewall…', () => saveFirewall(false)),
           h(Contacts, { owners, recipients, disabled: !!busy, onChange: (a, b) => { setOwners(a); setRecipients(b); setPermit(false); } }),
           check('ryze-permit', permit, setPermit, 'Confirmo quem pode dar comandos e receber mensagens privadas. Outros contatos devem ser bloqueados.'),
           !connected && h('p', { className: 'ryze-help' }, 'Você pode salvar o firewall agora. Conecte o WhatsApp para ativar o Hermes.'),
           state.enabled && h('p', { className: 'ryze-help' }, 'Salvar com o canal ativo reinicia o gateway para aplicar as permissões. Em caso de falha, o canal é pausado.'),
-          h('div', { className: 'ryze-actions' }, submit(!state.enabled && connected ? 'Salvar e ativar Hermes' : 'Salvar firewall', !owners || !recipients || !permit),
-            !state.enabled && connected && button('Salvar sem ativar', () => run('Salvando firewall…', () => saveFirewall(false)), !owners || !recipients || !permit, true)))),
-      h(Groups, { instance: state.instance, drafts: groupDrafts, setDrafts: setGroupDrafts, picked: pickedGroups, setPicked: setPickedGroups, disabled: !!busy }));
+          h('div', { className: 'ryze-actions' },
+            submit('Salvar firewall', !permit || (state.enabled && (!owners || !recipients))))),
+        !state.enabled && h('div', {className: 'ryze-actions'},
+          button('Ativar Hermes', () => run('Ativando firewall…', () => saveFirewall(true)),
+            !connected || blockers.length > 0 || !state.webhook_url || !owners || owners !== state.allowed_users || recipients !== state.allowed_recipients, true),
+          h('p', {className: 'ryze-help'}, blockers.length ? blockers.join(' ') : !state.webhook_url ? 'O canal está pausado. Configure a URL do webhook para ativar. Você já pode salvar contatos e grupos.' : 'Para ativar, conecte o WhatsApp e salve ao menos um contato com permissão para comandar e receber.'))),
+      h(Groups, { key: state.instance, instance: state.instance, drafts: groupDrafts, setDrafts: setGroupDrafts, picked: pickedGroups, setPicked: setPickedGroups, disabled: !!busy,
+        onSaved: count => setState(current => current?.instance === state.instance ? {...current, saved_groups: count} : current) }));
     const link = (label, action) => h('button', { type: 'button', className: 'ryze-link', disabled: !!busy, onClick: action }, label, icon('arrow'));
     const instanceTable = rows => rows.length ? h('table', { className: 'ryze-table ryze-instance-table' },
       h('thead', null, h('tr', null, ...['Nome da instância', 'Status do WhatsApp', 'Vinculação ao Hermes', 'Ações'].map(label => h('th', { key: label, scope: 'col' }, label)))),
@@ -555,18 +704,18 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
     const overview = state && (!state.instance ? onboarding : h(React.Fragment, null,
       h('section', { className: 'ryze-channel', 'aria-label': 'Saúde do canal' },
         h('div', { className: 'ryze-channel-lead' }, h('span', { className: active ? 'is-good' : '' }, icon(active ? 'check' : 'info')),
-          h('div', null, h('h3', null, active ? 'Seu canal está pronto' : !state.instance ? 'Vamos conectar seu canal' : !state.enabled ? 'Hermes está pausado' : transportError || !transport ? 'Estado não confirmado' : transport.maintenance_active ? 'Canal em manutenção' : 'Seu canal precisa de atenção'),
-            h('p', { className: 'ryze-help' }, active ? 'Pronto para receber mensagens autorizadas.' : state.enabled ? 'Confira a saúde do receptor em Métricas.' : 'Ative o canal após revisar as permissões.'))),
+          h('div', null, h('h3', null, active ? 'Seu canal está pronto' : !state.instance ? 'Vamos conectar seu canal' : !state.enabled ? 'Hermes está pausado' : transportError ? 'Estado não confirmado' : !transport ? 'Consultando o receptor' : transport.maintenance_active ? 'Canal em manutenção' : 'Seu canal precisa de atenção'),
+            h('p', { className: 'ryze-help' }, active ? 'Pronto para receber mensagens autorizadas.' : state.enabled ? 'Confira a saúde do receptor em Métricas.' : blockers.length ? blockers.join(' ') : !state.webhook_url ? 'Falta configurar a URL HTTPS do webhook deste gateway.' : 'Ative o canal em Configurações.'))),
         h('dl', { className: 'ryze-channel-facts' }, ...[
           ['WhatsApp', channelStates[transport?.whatsapp_state] || states[connection?.status] || 'Não confirmado', transport?.whatsapp_state ? transport.whatsapp_state === 'connected' : connected],
-          ['Transporte', transport?.websocket_connected ? 'WebSocket' : transport?.running ? 'Webhook de contingência' : 'Não confirmado', transport?.websocket_connected],
+          ['Transporte', transport?.websocket_connected ? 'WebSocket + webhook' : transport?.running ? 'Webhook de contingência' : !state.enabled ? 'Desligado neste gateway' : 'Não confirmado', transport?.websocket_connected],
           ['Hermes', !state.enabled ? 'Pausado' : active ? 'Ativo' : transport?.maintenance_active ? 'Manutenção' : 'Não confirmado', active]
         ].map(([label, value, good]) => h('div', { key: label }, h('dt', null, h('span', { className: 'ryze-dot ' + (good ? 'is-good' : 'is-muted'), 'aria-hidden': true }), label), h('dd', null, value))))),
       state.instance && !state.enabled && h('div', { className: 'ryze-actions' }, button('Configurar canal', () => changeStep(connected ? 3 : 2))),
       h('div', { className: 'ryze-overview-columns' },
         h('section', { className: 'ryze-processing' }, h('h3', null, 'Processamento'),
-          h('dl', { className: 'ryze-counts' }, h('div', null, h('dd', null, transport?.buffer_pending ?? '—'), h('dt', null, 'mensagens aguardando')),
-            h('div', null, h('dd', null, transport?.native_activity?.known ? transport.native_activity.agent_tasks : '—'), h('dt', null, 'tarefas em processamento'))),
+          h('dl', { className: 'ryze-counts' }, h('div', null, h('dd', null, transport?.buffer_pending ?? '—'), h('dt', null, 'Mensagens aguardando')),
+            h('div', null, h('dd', null, transport?.native_activity?.known ? transport.native_activity.agent_tasks : '—'), h('dt', null, 'Tarefas em processamento'))),
           h('table', { className: 'ryze-table ryze-summary-timings' }, h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Tempo por etapa'), h('th', { scope: 'col' }, 'Duração média'))),
             h('tbody', null, ...[['buffer', 'Buffer'], ['stt_execution', 'Transcrição'], ['agent_to_first_send', 'Primeira resposta']].map(([key, label]) => h('tr', { key }, h('th', { scope: 'row' }, label), h('td', null, durationText(transport?.timings?.[key]?.mean_ms)))))),
           link('Ver todas as métricas', () => navigate(2))),
@@ -574,7 +723,7 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
           h('dl', null, ...[
             ['Buffer', (state.buffer_seconds ?? 10) + ' s', 'Tempo para agrupar mensagens antes do processamento.'],
             ['Transcrições', state.echo_transcripts === false ? 'Só para IA' : 'Na conversa', state.echo_transcripts === false ? 'As transcrições são enviadas apenas para a IA do Hermes.' : 'As transcrições também são enviadas na conversa.'],
-            ['Permissões', 'Restritas', 'O Hermes pode responder apenas conforme as permissões definidas.']
+            ['Permissões salvas', quantity(numbers(state.allowed_recipients).length, 'contato', 'contatos') + ' · ' + quantity(state.saved_groups ?? 0, 'grupo', 'grupos'), quantity(numbers(state.allowed_users).length, 'contato pode', 'contatos podem') + ' comandar o Hermes.']
           ].map(([label, value, help]) => h('div', { key: label }, h('dt', null, label), h('dd', null, value), h('dd', { className: 'ryze-help' }, help)))),
           button(h(React.Fragment, null, icon('settings'), 'Editar configurações'), () => { setStep(3); navigate(3); }, false, true))),
       h('section', { className: 'ryze-other' }, h('h3', null, 'Outras instâncias'), instanceTable(items.filter(item => item.name !== state.instance))),
@@ -585,8 +734,18 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
       if (tab === 0) pageContent = overview;
       else if (tab === 2) pageContent = h(React.Fragment, null,
         h('p', { className: 'ryze-intro' }, 'Diagnóstico da instância do Hermes: ', h('strong', null, state.instance || 'nenhuma selecionada'), '. As outras instâncias não compartilham estas métricas.'),
-        h('p', { className: 'ryze-help' }, updatedAt ? 'Última consulta bem-sucedida: ' + new Date(updatedAt).toLocaleString('pt-BR') + '.' : 'Aguardando a primeira consulta de diagnóstico.'), healthContent);
+        h('p', { className: 'ryze-help' }, updatedAt ? 'Última consulta bem-sucedida: ' + new Date(updatedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) + '.' : 'Aguardando a primeira consulta de diagnóstico.'), healthContent);
       else if (tab === 3 && !state.instance) pageContent = h('div', null, h('p', null, 'Escolha uma instância antes de configurar o Hermes.'), button('Escolher instância', () => changeStep(state.credential_saved ? 1 : 0)));
+      else if (tab === 3) {
+        const sections = [['ryze-channel-settings','Estado do canal'], ['ryze-buffer-title','Buffer de mensagens'], ['ryze-transcription-title','Transcrição de áudios'], ['ryze-firewall-title','Contatos'], ['ryze-groups-title','Grupos']];
+        pageContent = h('div', {className: 'ryze-settings-layout'},
+          h('nav', {className: 'ryze-settings-index', 'aria-label': 'Seções das configurações'},
+            ...sections.map(([id, title]) => h('button', {key: id, type: 'button', onClick: () => {
+              const heading = document.getElementById(id);
+              heading?.focus({preventScroll: true}); heading?.scrollIntoView({block: 'start'});
+            }}, title))),
+          h('div', {className: 'ryze-settings-content'}, content));
+      }
       else if (tab === 1) {
         if (inspected && inspected !== state.instance) pageContent = h('section', { className: 'ryze-instance-detail' },
           link('Voltar à lista', () => { setInspected(''); changeStep(1); }), h('h3', null, inspected),
@@ -602,25 +761,33 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
         else if (step === 2) pageContent = h(React.Fragment, null, link('Voltar à lista', () => changeStep(1)), content);
       }
     }
+    if (webhooksPage) return state ? h(Webhooks, {
+      key: state.instance, state, busy, blockers, run, feedback: localFeedback('global'),
+      canActivate: !!state.instance && !!state.allowed_users && connected && activation?.instance === state.instance && !blockers.length,
+      onActivate: () => saveFirewall(true),
+      onPause: async () => { const result = await api('/pause', {}); await refresh(); setNotice(result.restart_scheduled ? 'Pausa salva. O gateway está reiniciando. Atualize o estado em instantes.' : 'Receptor pausado.'); },
+      onSaved: () => setNotice('Configuração do webhook salva.'),
+      onRefresh: async () => { setActivationRevision(n => n + 1); const next = await refresh(); if (next.instance) await checkConnection(); }
+    }) : h('section', {className: 'ryze-page', lang: 'pt-BR'}, h('a', {href: '#/ryzeapi', className: 'ryze-link'}, 'Voltar ao RyzeAPI'), h('h1', null, 'Webhooks do RyzeAPI'), content, localFeedback('global'));
     return h('section', { className: 'ryze-page', lang: 'pt-BR', 'aria-labelledby': 'ryze-title', 'aria-busy': !!busy },
       h('header', { className: 'ryze-header' }, h('div', null, h('h1', { id: 'ryze-title' }, 'RyzeAPI'), h('p', null, state?.instance ? 'WhatsApp · ' + state.instance : 'Canal do WhatsApp')),
         button(h(React.Fragment, null, icon('user'), 'Conta pessoal'), () => changeStep(0), false, true)),
       h('nav', { className: 'ryze-tabs', 'aria-label': 'Navegação RyzeAPI' }, ...tabs.map((label, index) => h('button', {
         key: label, type: 'button', 'aria-current': tab === index ? 'page' : undefined, disabled: !!busy,
         onClick: () => { setInspected(''); if (index === 3) setStep(3); navigate(index); if (index === 1 && !state?.credential_saved) setStep(0); }
-      }, label))),
+      }, label)), webapp && h('a', {href: '#/ryzeapi/webhooks', className: 'ryze-nav-link'}, 'Webhooks')),
       (tab !== 0 || !!state?.instance) && h('div', { className: 'ryze-title-row' }, h('h2', { tabIndex: -1, ref: viewTitle }, tabs[tab]),
         h('div', { className: 'ryze-title-actions' }, state?.instance && h('div', null, h('label', { htmlFor: 'ryze-inspect' }, 'Instância selecionada'),
           h('select', { id: 'ryze-inspect', value: tab === 1 && inspected ? inspected : state.instance, disabled: !!busy, onChange: e => { const n = e.target.value; setInspected(n); navigate(1); if (n === state.instance) setStep(2); } },
             ...[state.instance, ...items.map(i => i.name).filter(n => n !== state.instance)].map(n => h('option', { key: n, value: n }, n)))),
-          button(h(React.Fragment, null, icon('refresh'), 'Atualizar'), () => run('Atualizando…', async () => { const next = await refresh(); if (next.instance) await checkConnection(); if (next.enabled) await refreshDiagnostics(); if (next.credential_saved) { const result = await api('/instances'); setItems(result.instances); setListLoaded(true); } }), false, true))),
+          button(h(React.Fragment, null, icon('refresh'), 'Atualizar'), () => run('Atualizando…', async () => { setActivationRevision(n => n + 1); const next = await refresh(); if (next.instance) await checkConnection(); if (next.enabled) await refreshDiagnostics(); if (next.credential_saved) { const result = await api('/instances'); setItems(result.instances); setListLoaded(true); } }), false, true))),
       state?.hook_pending && h('div', { className: 'ryze-recovery', role: 'alert' },
         h('strong', null, 'Conferir webhook remoto'),
         h('p', null, 'O estado do receptor está pendente. Confira o registro antes de trocar a instância.'),
         button('Reconciliar e pausar', () => run('Verificando webhook…', async () => { await api('/pause', {}); await refresh(); }))),
       state?.enabled && !state.runtime_running && h('p', { className: 'ryze-runtime-note', role: 'status' }, 'Permissões salvas. No Coolify, faça o redeploy deste gateway e atualize o estado.'),
       localFeedback('global'),
-      h('div', { className: 'ryze-main', key: tab }, pageContent));
+      h('div', { className: 'ryze-main ryze-view-' + ['overview','instances','metrics','settings'][tab], key: tab }, pageContent));
   }
   return App;
 }
@@ -629,18 +796,55 @@ const h = React.createElement;
 function Button({ outlined, children, ...props }) {
   return h('button', {...props, className: outlined ? 'ryze-secondary' : 'ryze-primary'}, children);
 }
+// The Hermes shell can restore its last tab before disk plugin routes are registered.
+// Honor only a direct Webapp link during startup. User navigation always wins.
+function restoreWebhooksLink() {
+  const marker = Symbol.for('ryzeapi.webhooks.initialNavigation');
+  if (window[marker]) return;
+  window[marker] = true;
+  const navigation = performance.getEntriesByType('navigation')[0];
+  const wanted = '#/ryzeapi/webhooks';
+  if (!navigation || !/^https?:$/.test(location.protocol) || new URL(navigation.name).hash !== wanted || navigator.userActivation?.hasBeenActive) return;
+  let stopped = false;
+  function stop() {
+    stopped = true;
+    clearTimeout(expiry);
+    window.removeEventListener('hashchange', check);
+    window.navigation?.removeEventListener('currententrychange', check);
+    window.removeEventListener('pointerdown', stop, true);
+    window.removeEventListener('keydown', stop, true);
+  }
+  function restore() {
+    if (!stopped && !navigator.userActivation?.hasBeenActive && location.hash !== wanted) {
+      location.replace(wanted);
+    }
+  }
+  function check(event) {
+    if (event.navigationType === 'traverse') stop();
+    else requestAnimationFrame(restore);
+  }
+  const expiry = setTimeout(stop, 5000);
+  window.addEventListener('hashchange', check);
+  window.navigation?.addEventListener('currententrychange', check);
+  window.addEventListener('pointerdown', stop, true);
+  window.addEventListener('keydown', stop, true);
+  requestAnimationFrame(restore);
+}
 export default {
   id: 'ryzeapi', name: 'RyzeAPI',
   register(ctx) {
     const api = (path, data) => ctx.rest(path, data === undefined ? {} : {method: 'POST', body: {...data, _ryze_ui: true}, timeoutMs: 90000});
     const App = createRyzePanel(React, { Button, Input: 'input', Label: 'label' }, api);
-    ctx.register({
-      id: 'whatsapp', area: ROUTES_AREA, data: {path: '/ryzeapi'},
-      render: () => h('div', {className: 'ryze-desktop ryze-surface'},
-        h('style', null, ".ryze-page { max-width: 1160px; margin-inline: auto; padding: 28px 32px 48px; color: var(--midground); font-family: var(--theme-font-sans, sans-serif); font-size: 15px; line-height: 1.55; }\n.ryze-page * { box-sizing: border-box; }\n.ryze-header { display: flex; align-items: start; justify-content: space-between; gap: 24px; margin-bottom: 30px; }\n.ryze-page h1 { font-size: 30px; line-height: 1.15; margin: 0 0 8px; font-weight: 600; letter-spacing: -.02em; }\n.ryze-header p { margin: 0; }\n.ryze-status { border: 1px solid color-mix(in srgb, var(--midground) 40%, transparent); padding: 6px 10px; font-size: 12px; white-space: nowrap; }\n.ryze-steps { list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); padding: 0; margin: 0; border-bottom: 1px solid color-mix(in srgb, var(--midground) 24%, transparent); }\n.ryze-steps button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 8px; background: transparent; border: 0; border-bottom: 3px solid transparent; color: inherit; text-align: left; cursor: pointer; font: inherit; }\n.ryze-steps button[aria-current] { border-bottom-color: var(--midground); font-weight: 600; }\n.ryze-steps button:disabled { opacity: .5; cursor: not-allowed; }\n.ryze-step-number { font-size: 12px; font-variant-numeric: tabular-nums; }\n.ryze-feedback:empty { display: none; }\n.ryze-feedback { margin-top: 20px; }\n.ryze-feedback p { padding: 12px 16px; border: 1px solid color-mix(in srgb, var(--midground) 40%, transparent); background: color-mix(in srgb, var(--midground) 6%, transparent); }\n.ryze-layout { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 48px; padding-top: 32px; }\n.ryze-main { min-width: 0; }\n.ryze-page h2 { font-size: 22px; line-height: 1.3; font-weight: 500; margin: 0 0 12px; }\n.ryze-intro { margin: 0 0 26px; }\n.ryze-page p { overflow-wrap: anywhere; }\n.ryze-field { display: grid; gap: 8px; margin: 22px 0; }\n.ryze-page input:not([type=checkbox]):not([type=radio]), .ryze-page select { width: 100%; min-height: 44px; font-size: 16px; color: inherit; background: var(--background); border: 1px solid color-mix(in srgb, var(--midground) 45%, transparent); padding: 10px 12px; border-radius: var(--theme-radius, 0); }\n.ryze-page select option { background: var(--background); color: var(--midground); }\n.ryze-page button { min-height: 44px; white-space: normal; height: auto; }\n.ryze-main button { line-height: 1.4; padding-block: 10px; }\n.ryze-page :focus-visible { outline: 2px solid var(--midground); outline-offset: 4px; }\n.ryze-help { font-size: 13px; line-height: 1.6; margin: 0; color: color-mix(in srgb, var(--midground) 82%, var(--background)); }\n.ryze-token-kind { padding: 0; border: 0; margin: 24px 0; }\n.ryze-token-kind legend { margin-bottom: 12px; font-weight: 500; }\n.ryze-token-kind label, .ryze-check { display: flex; align-items: start; gap: 10px; padding-block: 7px; cursor: pointer; }\n.ryze-page input[type=checkbox], .ryze-page input[type=radio] { flex: 0 0 18px; width: 18px; height: 18px; margin-top: 3px; accent-color: var(--midground); }\n.ryze-check { margin: 18px 0; }\n.ryze-details { margin-top: 28px; padding-top: 20px; border-top: 1px solid color-mix(in srgb, var(--midground) 24%, transparent); }\n.ryze-details summary { cursor: pointer; min-height: 44px; padding-block: 8px; }\n.ryze-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin-top: 20px; }\n.ryze-code { margin: 22px 0; }\n.ryze-code img { display: block; padding: 12px; background: white; max-width: 100%; height: auto; }\n.ryze-pairing { display: inline-block; font-size: 30px; letter-spacing: .12em; padding: 16px 0; }\n.ryze-aside { border-left: 1px solid color-mix(in srgb, var(--midground) 24%, transparent); padding-left: 24px; }\n.ryze-aside h2 { font-size: 16px; line-height: 1.5; }\n.ryze-aside dl { margin-block: 22px; }\n.ryze-aside dt { font-weight: 600; font-size: 13px; margin-top: 16px; }\n.ryze-aside dd { margin: 4px 0 0; font-size: 13px; }\n.ryze-aside a { display: inline-block; margin-top: 22px; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }\n.ryze-connection { display: flex; align-items: center; gap: 16px; padding: 20px 0; border-block: 1px solid color-mix(in srgb, var(--midground) 24%, transparent); }\n.ryze-connection strong { display: block; font-size: 18px; font-weight: 500; margin-bottom: 4px; }\n.ryze-connection-spinner { flex: 0 0 32px; width: 32px; height: 32px; border: 2px solid color-mix(in srgb, var(--midground) 24%, transparent); border-top-color: var(--midground); border-radius: 50%; animation: ryze-wait 1.2s linear infinite; }\n.ryze-connected-mark { flex-shrink: 0; }\n.ryze-connected-mark path { stroke-dasharray: 26; stroke-dashoffset: 0; animation: ryze-confirm .4s ease-out both; }\n.ryze-poll-note { margin: 12px 0 24px; font-size: 12px; line-height: 1.6; }\n.ryze-firewall { margin-top: 28px; padding-top: 24px; border-top: 1px solid color-mix(in srgb, var(--midground) 24%, transparent); }\n.ryze-firewall h3 { font-size: 20px; font-weight: 500; line-height: 1.3; margin: 0 0 12px; }\n@keyframes ryze-wait { to { transform: rotate(360deg); } }\n@keyframes ryze-confirm { from { stroke-dashoffset: 26; } to { stroke-dashoffset: 0; } }\n@media (prefers-reduced-motion: reduce) { .ryze-connection-spinner, .ryze-connected-mark path { animation: none; } }\n@container ryze (max-width: 1050px) { .ryze-layout { grid-template-columns: minmax(0, 1fr); gap: 36px; } .ryze-aside { border-left: 0; border-top: 1px solid color-mix(in srgb, var(--midground) 24%, transparent); padding: 24px 0 0; } }\n@container ryze (max-width: 600px) { .ryze-page { padding: 22px 16px 40px; } .ryze-header { flex-direction: column; gap: 14px; margin-bottom: 22px; } .ryze-steps button { flex-direction: column; align-items: start; gap: 2px; font-size: 13px; padding-inline: 4px; } .ryze-layout { padding-top: 24px; } .ryze-page h2 { font-size: 21px; } }\n.ryze-health-list { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr); gap: 10px 24px; margin: 20px 0; }\n.ryze-health-list dt { font-weight: 600; }\n.ryze-health-list dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }\n.ryze-timing-list { list-style: none; padding: 0; margin: 20px 0; }\n.ryze-timing-list li { padding: 16px 0; border-bottom: 1px solid color-mix(in srgb, var(--midground) 24%, transparent); }\n.ryze-timing-list h4 { font-size: inherit; font-weight: 600; margin: 0 0 10px; }\n.ryze-timing-list dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0; }\n.ryze-timing-list dt { font-size: 13px; }\n.ryze-timing-list dd { margin: 4px 0 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }\n@container ryze (max-width: 600px) {\n  .ryze-health-list { grid-template-columns: minmax(0, 1fr); gap: 4px; }\n  .ryze-health-list dd { margin-bottom: 12px; }\n}\n\n/* Task workspace. Spatial measures: approved tasks.png (1505 × 1045).\n   Native theme family wins over the offline fingerprint fallback (Mirza). */\n.ryze-page { --ryze-rule: color-mix(in srgb, var(--midground) 25%, transparent); --ryze-good: #7ce3aa; max-width: 1600px; padding: 24px 5.45% 28px; font-size: 17px; line-height: 1.45; scrollbar-color: var(--midground) var(--background); caret-color: var(--midground); }\n.ryze-page ::selection { background: var(--midground); color: var(--background); }\n.ryze-page h1 { font-size: 38px; line-height: 1.05; font-weight: 750; letter-spacing: -.02em; margin: 0 0 6px; }\n.ryze-header { min-height: 69px; margin: 0 0 17px; align-items: flex-start; }\n.ryze-header button { min-width: 208px; }\n.ryze-header button, .ryze-title-actions > button { padding-block: 12px; min-height: 50px; }\n.ryze-page button { font-family: inherit; letter-spacing: normal; text-transform: none; font-size: 16px; line-height: 1.35; gap: 12px; }\n.ryze-page button svg { flex-shrink: 0; }\n.ryze-page button:disabled { cursor: not-allowed; }\n.ryze-tabs { display: flex; gap: 44px; border-bottom: 1px solid var(--ryze-rule); min-height: 56px; }\n.ryze-tabs button { border: 0; border-bottom: 3px solid transparent; background: none; color: inherit; padding: 13px 34px; cursor: pointer; font-size: 18px; }\n.ryze-tabs button[aria-current] { border-bottom-color: var(--midground); font-weight: 650; }\n.ryze-tabs button:hover, .ryze-link:hover { background: color-mix(in srgb, var(--midground) 7%, transparent); }\n.ryze-title-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 112px; }\n.ryze-page .ryze-title-row h2 { font-size: 42px; line-height: 1.15; font-weight: 750; margin: 0; letter-spacing: -.02em; }\n.ryze-title-actions { display: flex; align-items: center; gap: 26px; }\n.ryze-title-actions label { display: block; font-size: 14px; margin-bottom: 4px; }\n.ryze-title-actions select { appearance: none; min-width: 264px; min-height: 44px !important; padding: 8px 32px 8px 12px !important; border-radius: 3px; }\n.ryze-title-actions > div { position: relative; }\n.ryze-title-actions > div::after { content: ''; position: absolute; right: 18px; bottom: 18px; width: 8px; height: 8px; border-bottom: 2px solid; border-right: 2px solid; transform: rotate(45deg); pointer-events: none; }\n.ryze-title-actions > button { margin-top: 3px; width: 138px; padding-inline: 14px; border-radius: 3px; }\n.ryze-page h3 { font-size: 28px; font-weight: 700; line-height: 1.25; margin: 0 0 22px; letter-spacing: -.01em; }\n.ryze-page p { max-width: 72ch; }\n.ryze-channel { display: grid; grid-template-columns: minmax(0, .99fr) minmax(0, 2.01fr); gap: 36px; align-items: center; min-height: 115px; border: 1px solid var(--ryze-rule); border-radius: 3px; padding: 24px 32px; }\n.ryze-channel-lead { display: flex; align-items: center; gap: 22px; }\n.ryze-channel-lead > span { flex-shrink: 0; }\n.ryze-channel-lead > span svg { width: 54px; height: 54px; stroke-width: 1.3; }\n.ryze-channel h3 { font-size: 28px; margin: 0 0 5px; }\n.ryze-channel .ryze-help { font-size: 14px; }\n.ryze-channel-facts { display: grid; grid-template-columns: 1fr 1fr .65fr; border-left: 1px solid var(--ryze-rule); padding-left: 60px; gap: 28px; margin: 0; }\n.ryze-channel-facts > div:nth-child(2) { margin-left: -11px; }\n.ryze-channel-facts dt { font-weight: 600; font-size: 17px; }\n.ryze-channel-facts dd { font-size: 14px; margin: 8px 0 0 18px; }\n.ryze-dot { display: inline-block; vertical-align: baseline; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; background: currentColor; }\n.ryze-page .is-good { color: var(--ryze-good); }\n.ryze-page .is-muted { color: color-mix(in srgb, var(--midground) 60%, var(--background)); }\n.ryze-overview-columns { display: grid; grid-template-columns: minmax(0, 1.034fr) minmax(0, 1fr); gap: 48px; margin-top: 31px; }\n.ryze-overview-columns h3 { margin-bottom: 9px; }\n.ryze-config-summary { border-left: 1px solid var(--ryze-rule); padding-left: 42px; }\n.ryze-counts { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin: 0 0 12px; }\n.ryze-counts > div + div { border-left: 1px solid var(--ryze-rule); padding-left: 42px; }\n.ryze-counts dd { font-size: 28px; font-weight: 600; margin: 0; font-variant-numeric: tabular-nums; }\n.ryze-counts dt { font-size: 17px; }\n.ryze-table { border-collapse: collapse; width: 100%; text-align: left; font-size: 16px; font-variant-numeric: tabular-nums; }\n.ryze-table th, .ryze-table td { padding: 9px 12px; border-bottom: 1px solid var(--ryze-rule); overflow-wrap: anywhere; }\n.ryze-table thead th { font-size: 14px; font-weight: 400; padding-block: 12px; }\n.ryze-table tbody th { font-weight: 500; }\n.ryze-summary-timings th, .ryze-summary-timings td { padding: 5px 6px; }\n.ryze-summary-timings thead th { padding: 12px 4px; }\n.ryze-summary-timings th:last-child, .ryze-summary-timings td { text-align: right; }\n.ryze-summary-timings thead th:first-child { font-size: 16px; font-weight: 600; text-align: left; }\n.ryze-link { display: inline-flex; align-items: center; justify-content: flex-start; gap: 8px; padding: 8px 3px; border: 0; color: inherit; background: none; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }\n.ryze-link svg { width: 15px; height: 15px; }\n.ryze-processing > .ryze-link { margin-top: 6px; }\n.ryze-config-summary dl { margin: 0 0 20px; }\n.ryze-config-summary dl > div { display: grid; grid-template-columns: 1fr .72fr 1.9fr; gap: 20px; align-items: start; border-bottom: 1px solid var(--ryze-rule); padding: 11px 0; min-height: 67px; }\n.ryze-config-summary > button { min-height: 51px; min-width: 244px; border-radius: 3px; font-size: 17px; transform: translateY(-2px); }\n.ryze-config-summary dt { font-weight: 650; }\n.ryze-config-summary dd { margin: 0; font-size: 16px; }\n.ryze-config-summary dd.ryze-help { font-size: 14px; }\n.ryze-other { margin-top: 14px; padding-top: 22px; border-top: 1px solid var(--ryze-rule); }\n.ryze-other h3 { margin-bottom: 14px; }\n.ryze-instance-table { table-layout: fixed; }\n.ryze-instance-table th:last-child { width: 17%; }\n.ryze-instance-table td { padding-block: 0; }\n.ryze-instance-table .ryze-link { font-size: 14px; }\n.ryze-footer { display: flex; align-items: center; gap: 14px; font-size: 14px; padding-top: 23px; }\n.ryze-footer p { margin: 0; }\n.ryze-empty { padding: 24px 0; margin: 0; }\n.ryze-main form { max-width: 840px; }\n.ryze-firewall { scroll-margin-top: 20px; }\n.ryze-main > h2, .ryze-instance-detail h3 { margin-top: 18px; }\n.ryze-metrics > h3 { margin-top: 24px; }\n.ryze-dirty { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; font-size: 14px; margin: 14px 0; }\n.ryze-contacts ul { list-style: none; padding: 0; margin: 22px 0; }\n.ryze-contacts li { display: flex; align-items: center; gap: 24px; padding: 12px 0; border-bottom: 1px solid var(--ryze-rule); flex-wrap: wrap; }\n.ryze-contacts li strong { margin-right: auto; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }\n.ryze-contacts label { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; }\n.ryze-contact-add { display: flex; gap: 18px; align-items: flex-end; margin: 20px 0 10px; }\n.ryze-contact-add > div { flex: 1; }\n.ryze-contact-add input { display: block; margin-top: 8px; }\n.ryze-page input:not([type=checkbox]):not([type=radio]), .ryze-page select { appearance: none; }\n.ryze-timing-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0 40px; }\n.ryze-metrics .ryze-health-list { max-width: 920px; }\n/* Fluid desktop rhythm: preserve the approved proportions between 1101–1504px.\n   Columns remain minmax/fr; below this range the layout reflows, never zooms. */\n@container ryze (max-width: 1100px) {\n  .ryze-page { padding-inline: 32px; }\n  .ryze-tabs { gap: 16px; }\n  .ryze-tabs button { padding-inline: 20px; }\n  .ryze-channel { grid-template-columns: 1fr; gap: 24px; }\n  .ryze-channel-facts { border-left: 0; padding-left: 0; justify-content: flex-start; gap: 48px; }\n  .ryze-channel-facts > div:nth-child(2) { margin-left: 0; }\n  .ryze-overview-columns { gap: 28px; }\n  .ryze-config-summary { padding-left: 28px; }\n  .ryze-config-summary dl > div { grid-template-columns: 1fr 1fr; gap: 8px; }\n  .ryze-config-summary dd.ryze-help { grid-column: 1 / -1; }\n}\n@container ryze (max-width: 700px) {\n  .ryze-page { padding: 24px 18px 36px; font-size: 16px; }\n  .ryze-page h1 { font-size: 30px; }\n  .ryze-header { flex-direction: row; gap: 18px; margin-bottom: 18px; }\n  .ryze-header p { font-size: 14px; }\n  .ryze-header button { min-width: 0; padding-inline: 10px; font-size: 14px; }\n  .ryze-header button svg { display: none; }\n  .ryze-tabs { gap: 0; display: grid; grid-template-columns: 1fr 1fr; }\n  .ryze-tabs button { font-size: 16px; padding: 12px 8px; }\n  .ryze-title-row { align-items: stretch; flex-direction: column; padding: 24px 0; gap: 16px; }\n  .ryze-page .ryze-title-row h2 { font-size: 32px; }\n  .ryze-title-actions { gap: 12px; align-items: flex-end; }\n  .ryze-title-actions > div { min-width: 0; flex: 1; }\n  .ryze-title-actions select { min-width: 0; }\n  .ryze-title-actions > button { padding-inline: 10px; font-size: 14px; }\n  .ryze-title-actions > button svg { display: none; }\n  .ryze-channel { padding: 20px 16px; }\n  .ryze-channel-lead { gap: 14px; }\n  .ryze-channel h3 { font-size: 22px; }\n  .ryze-channel-lead > span svg { width: 36px; height: 36px; }\n  .ryze-channel-facts { display: grid; grid-template-columns: 1fr; gap: 14px; }\n  .ryze-channel-facts > div { display: flex; justify-content: space-between; gap: 12px; }\n  .ryze-channel-facts dd { margin: 0; text-align: right; }\n  .ryze-overview-columns { grid-template-columns: 1fr; gap: 32px; }\n  .ryze-config-summary { border-left: 0; padding: 24px 0 0; border-top: 1px solid var(--ryze-rule); }\n  .ryze-page h3 { font-size: 24px; }\n  .ryze-counts { gap: 18px; }\n  .ryze-counts > div + div { padding-left: 18px; }\n  .ryze-counts dt { font-size: 14px; }\n  .ryze-instance-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }\n  .ryze-instance-table, .ryze-instance-table tbody, .ryze-instance-table tr { display: block; }\n  .ryze-instance-table tr { padding: 12px 0; border-bottom: 1px solid var(--ryze-rule); }\n  .ryze-instance-table th, .ryze-instance-table td { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border: 0; padding: 7px 0; width: auto; }\n  .ryze-instance-table [data-label]::before { content: attr(data-label); width: 82px; flex-shrink: 0; font-size: 14px; font-weight: 400; }\n  .ryze-footer { align-items: flex-start; font-size: 13px; }\n  .ryze-footer svg { flex-shrink: 0; }\n  .ryze-timing-list { grid-template-columns: 1fr; }\n  .ryze-contact-add { align-items: stretch; flex-direction: column; }\n  .ryze-contacts li { gap: 6px 18px; }\n  .ryze-contacts li strong { flex-basis: 100%; }\n}\n.ryze-groups .ryze-group-heading { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: 18px; }\n.ryze-groups .ryze-group-list { margin-top: 24px; }\n.ryze-groups .ryze-group-row { padding: 24px 0; border-top: 1px solid color-mix(in srgb, var(--midground) 24%, transparent); }\n.ryze-groups .ryze-group-identity { overflow-wrap: anywhere; }\n.ryze-groups .ryze-group-identity h4 { font-size: 18px; margin: 0 0 6px; }\n.ryze-groups .ryze-group-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 18px; margin: 18px 0; }\n.ryze-groups .ryze-group-field { display: grid; gap: 8px; min-width: 0; }\n.ryze-groups select { width: 100%; min-width: 0; min-height: 44px; padding: 10px; color: var(--midground); background: var(--background); border: 1px solid color-mix(in srgb, var(--midground) 45%, transparent); border-radius: var(--theme-radius, 0); font: inherit; font-size: 16px; }\n.ryze-groups select:focus-visible { outline: 2px solid var(--midground); outline-offset: 3px; }\n.ryze-groups select:disabled { opacity: .65; }\n.ryze-groups .ryze-group-save > label { display: flex; align-items: baseline; gap: 8px; }\n.ryze-group-picker { position: relative; min-width: 0; }\n.ryze-group-box { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; border: 1px solid color-mix(in srgb, var(--midground) 45%, transparent); border-radius: var(--theme-radius, 0); background: var(--background); }\n.ryze-group-box:focus-within { outline: 2px solid var(--midground); outline-offset: 3px; }\n.ryze-group-chip { display: inline-flex; align-items: stretch; max-width: 100%; min-width: 0; border: 1px solid color-mix(in srgb, var(--midground) 40%, transparent); border-radius: 3px; background: color-mix(in srgb, var(--midground) 7%, var(--background)); }\n.ryze-group-chip.is-current { border-color: var(--midground); }\n.ryze-chip-name { display: flex; align-items: baseline; gap: 8px; }\n.ryze-chip-name svg { flex: 0 0 14px; }\n.ryze-group-editor-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; flex-wrap: wrap; }\n.ryze-group-editor-heading .ryze-group-identity { min-width: 0; flex: 1 1 240px; }\n.ryze-group-editor-heading > button { flex: 0 0 auto; }\n.ryze-group-removal { border-top: 1px solid color-mix(in srgb, var(--midground) 25%, transparent); padding: 24px 0; }\n.ryze-group-removal h4 { font-size: 18px; margin: 0 0 10px; overflow-wrap: anywhere; }\n.ryze-group-editor-heading h4:focus, .ryze-group-removal h4:focus { outline: 2px solid var(--midground); outline-offset: 4px; }\n.ryze-group-chip button:disabled { cursor: default; opacity: .65; }\n.ryze-group-chip button { color: var(--midground); font: inherit; font-size: 16px; border: 0; background: transparent; padding: 8px 10px; cursor: pointer; text-align: left; min-width: 0; overflow-wrap: anywhere; }\n.ryze-group-chip button:first-child { flex: 1; }\n.ryze-group-chip small { display: block; font-size: 13px; margin-top: 2px; }\n.ryze-group-chip .ryze-chip-remove { flex: 0 0 44px; display: grid; place-items: center; padding: 8px; }\n.ryze-group-chip button:hover, .ryze-picker-toggle:hover { background: color-mix(in srgb, var(--midground) 10%, transparent); }\n.ryze-group-chip button:focus-visible, .ryze-picker-toggle:focus-visible { outline: 2px solid var(--midground); outline-offset: -3px; }\n.ryze-group-search-line { display: flex; flex: 1 1 250px; min-width: 0; align-items: center; }\n.ryze-groups .ryze-group-search-line input { width: 100%; min-width: 0; height: 44px; padding: 8px; border: 0; outline: none; box-shadow: none; background: transparent; color: var(--midground); font: inherit; font-size: 16px; }\n.ryze-group-search-line input::placeholder { color: color-mix(in srgb, var(--midground) 82%, var(--background)); }\n.ryze-picker-toggle { width: 44px; height: 44px; flex: 0 0 44px; display: grid; place-items: center; color: var(--midground); background: transparent; border: 0; cursor: pointer; }\n.ryze-picker-toggle svg { transform: rotate(90deg); }\n.ryze-group-dropdown { position: absolute; z-index: 20; top: calc(100% + 8px); left: 0; right: 0; max-height: 300px; overflow-y: auto; overscroll-behavior: contain; background: var(--background); border: 1px solid color-mix(in srgb, var(--midground) 45%, transparent); border-radius: var(--theme-radius, 0); }\n.ryze-group-dropdown ul { list-style: none; margin: 0; padding: 4px; }\n.ryze-group-dropdown li { display: block; padding: 12px; min-height: 44px; cursor: pointer; overflow-wrap: anywhere; }\n.ryze-group-dropdown li span, .ryze-group-dropdown li small { display: block; }\n.ryze-group-dropdown li small { font-size: 13px; margin-top: 4px; }\n.ryze-group-dropdown li:hover, .ryze-group-dropdown li.is-highlighted { background: color-mix(in srgb, var(--midground) 12%, var(--background)); }\n.ryze-group-dropdown li[aria-selected=\"true\"] span { font-weight: 700; }\n.ryze-group-dropdown > p { padding: 12px; }\n\n/* Layout follows the width of the Hermes pane, including docked side panels. */\n.ryze-surface {\n  container: ryze / inline-size;\n  min-width: 0;\n}\n.ryze-desktop {\n  --background: var(--color-background, Canvas);\n  --midground: var(--color-foreground, CanvasText);\n  height: 100%;\n  overflow: auto;\n  background: var(--background);\n}\n.ryze-page {\n  --ryze-accent: light-dark(#16684e, #76d4ac);\n  --ryze-soft: color-mix(in srgb, var(--midground) 5%, var(--background));\n  --ryze-rule: color-mix(in srgb, var(--midground) 21%, var(--background));\n  max-width: 76rem;\n  padding: 2rem 2rem 3rem;\n  font: 400 .96rem/1.5 var(--theme-font-sans, system-ui, sans-serif);\n}\n.ryze-page :is(h1,h2,h3,h4) { text-wrap: balance; }\n.ryze-page .ryze-header { align-items: center; min-height: 3.5rem; margin-bottom: 1.25rem; }\n.ryze-page h1 { font-size: 1.875rem; font-weight: 680; letter-spacing: -.035em; }\n.ryze-header button { min-width: 0; }\n.ryze-header p, .ryze-page .ryze-help { color: color-mix(in srgb, var(--midground) 78%, var(--background)); }\n.ryze-tabs { display: flex; flex-wrap: wrap; gap: .25rem; min-height: auto; }\n.ryze-tabs button { flex: 0 1 auto; padding: .65rem .95rem; min-height: 44px; font-size: .94rem; }\n.ryze-tabs button[aria-current] { border-bottom-color: var(--ryze-accent); }\n.ryze-page .ryze-title-row { min-height: 0; padding-block: 1.6rem 1.2rem; }\n.ryze-page .ryze-title-row h2 { font-size: 1.5rem; font-weight: 650; letter-spacing: -.025em; }\n.ryze-page :is(.ryze-channel,.ryze-onboarding) {\n  background: var(--ryze-soft); border: 0; border-radius: .45rem; padding: 1.5rem;\n}\n.ryze-page .ryze-channel h3, .ryze-onboarding h3 { font-size: 1.35rem; margin: 0 0 .375rem; }\n.ryze-channel-lead { gap: .75rem; }\n.ryze-channel-lead > span svg { width: 2rem; height: 2rem; }\n.ryze-channel-facts { padding-left: 1.25rem; gap: 1rem; }\n.ryze-channel-facts > div:nth-child(2) { margin-left: 0; }\n.ryze-channel-facts dt { font-size: .82rem; }\n.ryze-channel-facts dd { font-weight: 650; margin-left: 0; }\n.ryze-onboarding { margin-top: 1.5rem; display: grid; grid-template-columns: 1.2fr 1fr; gap: 2rem; align-items: center; }\n.ryze-onboarding p { max-width: 45ch; margin: .4rem 0 1.25rem; }\n.ryze-onboarding ol { margin: 0; padding-left: 1.65rem; list-style: decimal; }\n.ryze-onboarding li { padding: .32rem 0 .32rem .35rem; }\n.ryze-onboarding [aria-current] { font-weight: 650; }\n.ryze-overview-columns { gap: 2rem; margin-top: 2rem; }\n.ryze-page .ryze-overview-columns h3, .ryze-page .ryze-other h3 { font-size: 1.16rem; }\n.ryze-counts dd { font-size: 1.65rem; }\n.ryze-counts dt { font-size: .9rem; }\n.ryze-title-actions { gap: .65rem; }\n.ryze-title-actions select { min-width: 10rem; }\n.ryze-title-actions > button { width: auto; margin: 0; }\n.ryze-runtime-note, .ryze-recovery { padding: .8rem 1rem; background: var(--ryze-soft); border-inline-start: 3px solid var(--ryze-accent); }\n.ryze-recovery p { margin: .3rem 0 .65rem; }\n.ryze-page :is(button,a,select,input,summary):focus-visible { outline: 2px solid var(--ryze-accent); outline-offset: 3px; }\n.ryze-desktop :is(.ryze-primary,.ryze-secondary) {\n  display: inline-flex; align-items: center; justify-content: center; min-height: 44px;\n  padding: .55rem 1rem; border: 1px solid var(--ryze-rule); border-radius: .35rem; cursor: pointer;\n}\n.ryze-desktop .ryze-primary { background: var(--midground); color: var(--background); }\n.ryze-desktop .ryze-secondary { background: transparent; color: var(--midground); }\n.ryze-desktop button:disabled { opacity: .55; cursor: not-allowed; }\n.ryze-desktop input:not([type=checkbox]):not([type=radio]) {\n  padding: .6rem .75rem; border: 1px solid var(--ryze-rule); border-radius: .3rem;\n  background: var(--background); color: var(--midground); min-height: 44px;\n}\n@media (prefers-reduced-motion: no-preference) {\n  .ryze-main { animation: ryze-arrive .16s ease-out both; }\n  @keyframes ryze-arrive { from { opacity: .75; translate: 0 3px; } to { opacity: 1; translate: 0 0; } }\n}\n@container ryze (max-width: 700px) {\n  .ryze-page { padding: 1.125rem .95rem 2rem; }\n  .ryze-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; }\n  .ryze-tabs button { padding-inline: .125rem; font-size: .8rem; }\n  .ryze-title-row { scroll-margin-top: 1rem; }\n  .ryze-channel-facts { padding-left: 0; }\n  .ryze-onboarding { grid-template-columns: 1fr; gap: 1rem; }\n  .ryze-page :is(.ryze-onboarding,.ryze-channel) { padding: 1rem; }\n  .ryze-channel-facts dd { margin: 0; }\n  .ryze-title-actions select { min-width: 0; }\n  .ryze-page .ryze-title-row { gap: .75rem; }\n  .ryze-overview-columns { gap: 1.5rem; }\n}\n"), h(App))
-    });
+    for (const [id, path, webhooksPage] of [['whatsapp', '/ryzeapi', false], ['webhooks', '/ryzeapi/webhooks', true]]) {
+      ctx.register({
+        id, area: ROUTES_AREA, data: {path},
+        render: () => h('div', {className: 'ryze-desktop ryze-surface'},
+          h('style', null, "/* Shared workspace, scoped to the Hermes pane rather than the browser window. */\n.ryze-surface { container: ryze / inline-size; min-width: 0; }\n.ryze-desktop { --background: var(--color-background, Canvas); --midground: var(--color-foreground, CanvasText); height: 100%; overflow: auto; background: var(--background); }\n.ryze-page {\n  --ryze-accent: light-dark(#146449, #79d5af);\n  --ryze-soft: color-mix(in srgb, var(--midground) 5%, var(--background));\n  --ryze-rule: color-mix(in srgb, var(--midground) 19%, var(--background));\n  --ryze-edge: color-mix(in srgb, var(--midground) 36%, var(--background));\n  --ryze-muted: color-mix(in srgb, var(--midground) 76%, var(--background));\n  box-sizing: border-box; width: 100%; max-width: 92rem; margin-inline: auto; padding: 1.75rem 2.25rem 3.5rem;\n  color: var(--midground); font: 400 .96rem/1.5 var(--theme-font-sans, system-ui, sans-serif);\n  scrollbar-color: var(--ryze-edge) var(--background); caret-color: var(--midground);\n}\n.ryze-page *, .ryze-page *::before, .ryze-page *::after { box-sizing: border-box; }\n.ryze-page ::selection { background: var(--midground); color: var(--background); }\n.ryze-page :is(h1,h2,h3,h4) { text-wrap: balance; color: inherit; }\n.ryze-page h1 { margin: 0; font-size: 1.875rem; line-height: 1.15; letter-spacing: -.035em; font-weight: 680; }\n.ryze-page h2 { margin: 0 0 .8rem; font-size: 1.45rem; line-height: 1.25; letter-spacing: -.025em; font-weight: 650; }\n.ryze-page h3 { margin: 0 0 .65rem; font-size: 1.13rem; line-height: 1.3; letter-spacing: -.015em; font-weight: 650; }\n.ryze-page h4 { margin: 0 0 .45rem; font-size: 1rem; font-weight: 650; }\n.ryze-page p { max-width: 72ch; margin: .55rem 0; overflow-wrap: anywhere; }\n.ryze-page :is(.ryze-help,.ryze-intro,.ryze-poll-note,.ryze-footer) { color: var(--ryze-muted); }\n.ryze-page .ryze-help, .ryze-poll-note { font-size: .865rem; line-height: 1.5; }\n.ryze-page .ryze-intro { margin: 0 0 1.1rem; }\n.ryze-page button, .ryze-page input, .ryze-page select { font: inherit; color: inherit; }\n.ryze-page button, .ryze-page summary { min-height: 44px; cursor: pointer; }\n.ryze-page button { white-space: normal; letter-spacing: normal; }\n.ryze-page button:disabled, .ryze-page input:disabled, .ryze-page select:disabled { opacity: .6; cursor: not-allowed; }\n.ryze-page :is(button,a,summary,select,input,[tabindex=\"-1\"]):focus-visible { outline: 2px solid var(--ryze-accent); outline-offset: 3px; }\n.ryze-page :is(input:not([type=checkbox]):not([type=radio]),select) { width: 100%; min-width: 0; min-height: 44px; padding: .55rem .75rem; border: 1px solid var(--ryze-edge); border-radius: .35rem; background: var(--background); font-size: 1rem; }\n.ryze-page select option { background: var(--background); color: var(--midground); }\n.ryze-page :is(input[type=checkbox],input[type=radio]) { flex: 0 0 1.08rem; width: 1.08rem; height: 1.08rem; accent-color: var(--ryze-accent); }\n.ryze-desktop :is(.ryze-primary,.ryze-secondary) { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; min-height: 44px; padding: .5rem .9rem; border: 1px solid var(--ryze-edge); border-radius: .375rem; font-weight: 560; }\n.ryze-desktop .ryze-primary { background: var(--midground); color: var(--background); }\n.ryze-desktop .ryze-secondary { background: transparent; color: inherit; }\n.ryze-page button svg { flex-shrink: 0; width: 1.1rem; height: 1.1rem; }\n.ryze-header, .ryze-title-row, .ryze-title-actions, .ryze-actions, .ryze-footer, .ryze-dirty, .ryze-link { display: flex; align-items: center; }\n.ryze-header, .ryze-title-row { justify-content: space-between; gap: 1.25rem; }\n.ryze-header { margin-bottom: 1.1rem; }\n.ryze-header p { margin: .2rem 0 0; color: var(--ryze-muted); font-size: .9rem; }\n.ryze-tabs { display: flex; flex-wrap: wrap; align-items: stretch; gap: .45rem; border-bottom: 1px solid var(--ryze-rule); }\n.ryze-tabs button { background: none; border: 0; border-bottom: 3px solid transparent; border-radius: 0; padding: .6rem .9rem; font-size: .94rem; }\n.ryze-tabs button[aria-current] { border-bottom-color: var(--ryze-accent); font-weight: 650; }\n.ryze-tabs button:hover, .ryze-link:hover { background: var(--ryze-soft); }\n.ryze-title-row { min-height: 5.3rem; padding: .95rem 0; }\n.ryze-title-row h2 { margin: 0; }\n.ryze-title-actions { gap: .65rem; }\n.ryze-title-actions > div { display: flex; align-items: center; gap: .6rem; min-width: 0; }\n.ryze-title-actions label, .ryze-field label, .ryze-page label[for] { font-size: .89rem; font-weight: 550; }\n.ryze-title-actions label { flex: 0 0 auto; white-space: nowrap; }\n.ryze-page .ryze-title-actions select { width: auto; min-width: 10.5rem; max-width: 18rem; }\n.ryze-main { min-width: 0; }\n.ryze-actions, .ryze-dirty { flex-wrap: wrap; gap: .65rem 1rem; margin: .9rem 0; }\n.ryze-dirty { color: var(--ryze-muted); font-size: .875rem; }\n.ryze-link { display: inline-flex; justify-content: start; gap: .4rem; min-height: 44px; padding: .4rem .2rem; border: 0; background: transparent; color: inherit; text-underline-offset: .2em; text-decoration: underline; }\n.ryze-link svg { width: .9rem; height: .9rem; }\n.ryze-page :is(.ryze-feedback:empty,.ryze-copy-status:empty) { display: none; }\n.ryze-feedback p, .ryze-runtime-note, .ryze-recovery { padding: .75rem .95rem; background: var(--ryze-soft); border: 1px solid var(--ryze-rule); overflow-wrap: anywhere; }\n.ryze-field { display: grid; gap: .4rem; margin: 1rem 0; }\n.ryze-field p, .ryze-recovery p { margin: .35rem 0; }\n.ryze-check, .ryze-token-kind label { display: flex; align-items: center; gap: .55rem; min-height: 44px; cursor: pointer; }\n.ryze-token-kind { padding: 0; margin: .85rem 0; border: 0; }\n.ryze-token-kind legend { font-weight: 600; }\n.ryze-page .is-good { color: var(--ryze-accent); }\n.ryze-page .is-muted { color: var(--ryze-muted); }\n.ryze-dot { display: inline-block; width: .5rem; height: .5rem; border-radius: 50%; background: currentColor; margin-right: .42rem; }\n.ryze-channel, .ryze-onboarding { display: grid; align-items: center; gap: 1.5rem; padding: 1.2rem 1.4rem; background: var(--ryze-soft); border-radius: .5rem; }\n.ryze-channel { grid-template-columns: minmax(13rem,.95fr) minmax(0,1.65fr); }\n.ryze-channel-lead { display: flex; align-items: start; gap: .75rem; }\n.ryze-channel-lead svg { display: block; width: 1.65rem; height: 1.65rem; }\n.ryze-channel-lead h3, .ryze-channel-lead p { margin: 0; }\n.ryze-channel-lead .ryze-help { margin-top: .25rem; }\n.ryze-channel-facts { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: .85rem; margin: 0; padding-left: 1.4rem; border-left: 1px solid var(--ryze-rule); }\n.ryze-channel-facts dt { color: var(--ryze-muted); font-size: .86rem; }\n.ryze-channel-facts dd { margin: .3rem 0 0; font-size: .95rem; font-weight: 600; overflow-wrap: anywhere; }\n.ryze-onboarding { grid-template-columns: 1.25fr 1fr; margin-top: 1.3rem; }\n.ryze-onboarding p { margin: .35rem 0 1rem; }\n.ryze-onboarding ol { margin: 0; padding-left: 1.5rem; }\n.ryze-onboarding li { padding-block: .32rem; }\n.ryze-onboarding [aria-current] { font-weight: 650; }\n.ryze-overview-columns { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 2.2rem; margin-block: 1.7rem; }\n.ryze-processing, .ryze-config-summary { min-width: 0; }\n.ryze-config-summary { border-left: 1px solid var(--ryze-rule); padding-left: 2.2rem; }\n.ryze-counts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; margin: .85rem 0; }\n.ryze-counts dd { margin: 0; font-size: 1.55rem; font-weight: 650; font-variant-numeric: tabular-nums; }\n.ryze-counts dt { color: var(--ryze-muted); font-size: .86rem; }\n.ryze-config-summary dl { margin: .3rem 0 .85rem; }\n.ryze-config-summary dl > div { display: grid; grid-template-columns: 1fr auto; gap: .15rem 1rem; padding: .65rem 0; border-bottom: 1px solid var(--ryze-rule); }\n.ryze-config-summary dt { font-weight: 600; }\n.ryze-config-summary dd { margin: 0; }\n.ryze-config-summary dd.ryze-help { grid-column: 1/-1; }\n.ryze-table { width: 100%; border-collapse: collapse; text-align: left; font-variant-numeric: tabular-nums; }\n.ryze-table :is(th,td) { border-bottom: 1px solid var(--ryze-rule); padding: .6rem .7rem; font-size: .94rem; overflow-wrap: anywhere; }\n.ryze-table thead th { color: var(--ryze-muted); font-size: .84rem; font-weight: 550; }\n.ryze-table tbody th { font-weight: 600; }\n.ryze-table :is(td,th):first-child { padding-left: 0; }\n.ryze-table :is(td,th):last-child { padding-right: 0; }\n.ryze-summary-timings :is(td,th):last-child { text-align: right; }\n.ryze-instance-table tbody td { padding-block: .2rem; }\n.ryze-other { border-top: 1px solid var(--ryze-rule); padding-top: 1.25rem; }\n.ryze-footer { gap: .6rem; margin-top: 1rem; font-size: .85rem; }\n.ryze-footer svg { flex-shrink: 0; width: 1rem; height: 1rem; }\n.ryze-footer p { margin: 0; }\n.ryze-empty { padding-block: .8rem; }\n.ryze-settings-layout { display: grid; grid-template-columns: 12.5rem minmax(0,1fr); gap: 2rem; align-items: start; }\n.ryze-settings-index { display: grid; position: sticky; top: 1rem; gap: .1rem; padding-right: 1rem; border-right: 1px solid var(--ryze-rule); }\n.ryze-settings-index button { border: 0; border-radius: .3rem; background: transparent; color: inherit; padding: .45rem .6rem; text-align: left; font-size: .9rem; }\n.ryze-settings-index button:hover, .ryze-settings-index button:focus-visible { background: var(--ryze-soft); }\n.ryze-settings-content { max-width: 59rem; min-width: 0; }\n.ryze-settings-content [tabindex=\"-1\"] { scroll-margin-block-start: 1.2rem; }\n.ryze-settings-content .ryze-field input { max-width: 30rem; }\n.ryze-settings-content input[type=number] { max-width: 12rem; }\n.ryze-firewall, .ryze-details { border-top: 1px solid var(--ryze-rule); margin-top: 1.65rem; padding-top: 1.25rem; }\n.ryze-details summary { display: list-item; padding: .55rem 0; font-weight: 600; }\n.ryze-contacts ul, .ryze-timing-list { list-style: none; padding: 0; margin: .8rem 0; }\n.ryze-contacts li { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1.15rem; min-height: 48px; border-bottom: 1px solid var(--ryze-rule); }\n.ryze-contacts li strong { margin-right: auto; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }\n.ryze-contacts li label { display: flex; align-items: center; gap: .45rem; min-height: 44px; }\n.ryze-contact-add { display: flex; align-items: flex-end; gap: .65rem; margin: 1rem 0 .4rem; }\n.ryze-contact-add input { display: block; margin-top: .35rem; }\n.ryze-contact-add > div { flex: 1; max-width: 24rem; }\n.ryze-view-instances > :is(form,details,.ryze-connection), .ryze-instance-detail { max-width: 58rem; }\n.ryze-view-instances .ryze-field input, .ryze-view-instances .ryze-field select { max-width: 32rem; }\n.ryze-connection { display: flex; align-items: center; gap: .9rem; background: var(--ryze-soft); padding: 1rem; }\n.ryze-connection strong { display: block; }\n.ryze-connection-spinner { width: 1.5rem; height: 1.5rem; flex-shrink: 0; border: 2px solid var(--ryze-edge); border-top-color: var(--midground); border-radius: 50%; }\n.ryze-code img { display: block; max-width: 100%; height: auto; padding: .75rem; background: white; }\n.ryze-pairing { font-size: 1.5rem; font-variant-numeric: tabular-nums; letter-spacing: .12em; }\n.ryze-metrics { margin-top: 1.25rem; }\n.ryze-health-list { display: grid; grid-template-columns: minmax(8rem,1fr) minmax(0,2fr); max-width: 53rem; align-items: baseline; margin: .7rem 0; font-variant-numeric: tabular-nums; }\n.ryze-health-list :is(dt,dd) { margin: 0; padding: .55rem .5rem .55rem 0; border-bottom: 1px solid var(--ryze-rule); overflow-wrap: anywhere; }\n.ryze-health-list dt { font-weight: 550; }\n.ryze-timing-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); column-gap: 2.2rem; }\n.ryze-timing-list li { padding: .8rem 0; border-bottom: 1px solid var(--ryze-rule); }\n.ryze-timing-list dl { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: .5rem; margin: 0; }\n.ryze-timing-list dt { color: var(--ryze-muted); font-size: .82rem; }\n.ryze-timing-list dd { margin: .15rem 0 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }\n@media (prefers-reduced-motion: no-preference) {\n  .ryze-connection-spinner { animation: ryze-wait 1.2s linear infinite; }\n  .ryze-desktop :is(.ryze-primary,.ryze-secondary,.ryze-tabs button,.ryze-nav-link) { transition: background-color .15s ease-out, border-color .15s ease-out; }\n  @keyframes ryze-wait { to { transform: rotate(360deg); } }\n}\n@container ryze (max-width: 950px) {\n  .ryze-page { padding-inline: 1.5rem; }\n  .ryze-channel { grid-template-columns: 1fr; gap: 1rem; }\n  .ryze-channel-facts { border: 0; padding: 0; }\n  .ryze-settings-layout { grid-template-columns: minmax(0,1fr); gap: 1.15rem; }\n  .ryze-settings-index { position: static; display: flex; flex-wrap: wrap; gap: .2rem .6rem; border: 0; border-bottom: 1px solid var(--ryze-rule); padding: 0 0 .65rem; }\n}\n@container ryze (max-width: 700px) {\n  .ryze-page { padding: 1rem 1rem 2.2rem; }\n  .ryze-header { gap: .65rem; margin-bottom: .7rem; }\n  .ryze-page h1 { font-size: 1.55rem; }\n  .ryze-page h2 { font-size: 1.27rem; }\n  .ryze-title-row { align-items: stretch; flex-direction: column; gap: .6rem; padding: 1.1rem 0; }\n  .ryze-title-actions { align-items: flex-end; }\n  .ryze-title-actions > div { display: grid; flex: 1; gap: .2rem; }\n  .ryze-page .ryze-title-actions select { width: 100%; min-width: 0; max-width: none; }\n  .ryze-overview-columns, .ryze-onboarding, .ryze-timing-list { grid-template-columns: minmax(0,1fr); }\n  .ryze-overview-columns { gap: 1.2rem; margin-block: 1.25rem; }\n  .ryze-config-summary { border: 0; border-top: 1px solid var(--ryze-rule); padding: 1.1rem 0 0; }\n  .ryze-channel,.ryze-onboarding { padding: 1rem; }\n  .ryze-instance-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }\n  .ryze-instance-table, .ryze-instance-table tbody, .ryze-instance-table tr { display: block; }\n  .ryze-instance-table tr { padding: .5rem 0; border-bottom: 1px solid var(--ryze-rule); }\n  .ryze-instance-table :is(th,td) { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: .65rem; padding: .3rem 0; border: 0; }\n  .ryze-instance-table [data-label]::before { content: attr(data-label); width: 5rem; color: var(--ryze-muted); font-size: .85rem; font-weight: 450; }\n}\n@container ryze (max-width: 450px) {\n  .ryze-health-list { grid-template-columns: minmax(0,1fr); }\n  .ryze-health-list dt { padding-bottom: 0; border: 0; }\n  .ryze-health-list dd { padding-top: .1rem; }\n  .ryze-channel-facts { grid-template-columns: 1fr; gap: .45rem; }\n  .ryze-channel-facts > div { display: flex; justify-content: space-between; align-items: baseline; gap: .6rem; }\n  .ryze-channel-facts dd { margin: 0; text-align: right; }\n  .ryze-contacts li { column-gap: .75rem; }\n  .ryze-contacts li strong { flex-basis: 100%; }\n  .ryze-contact-add { flex-direction: column; align-items: stretch; }\n  .ryze-contact-add > div { max-width: none; }\n}\n\n.ryze-groups .ryze-group-heading { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: 18px; }\n.ryze-groups .ryze-group-list { margin-top: 24px; }\n.ryze-groups .ryze-group-row { padding: 24px 0; border-top: 1px solid color-mix(in srgb, var(--midground) 24%, transparent); }\n.ryze-groups .ryze-group-identity { overflow-wrap: anywhere; }\n.ryze-groups .ryze-group-identity h4 { font-size: 18px; margin: 0 0 6px; }\n.ryze-groups .ryze-group-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 18px; margin: 18px 0; }\n.ryze-groups .ryze-group-field { display: grid; gap: 8px; min-width: 0; }\n.ryze-groups select { width: 100%; min-width: 0; min-height: 44px; padding: 10px; color: var(--midground); background: var(--background); border: 1px solid color-mix(in srgb, var(--midground) 45%, transparent); border-radius: var(--theme-radius, 0); font: inherit; font-size: 16px; }\n.ryze-groups select:focus-visible { outline: 2px solid var(--midground); outline-offset: 3px; }\n.ryze-groups select:disabled { opacity: .65; }\n.ryze-groups .ryze-group-save > label { display: flex; align-items: baseline; gap: 8px; }\n.ryze-group-picker { position: relative; min-width: 0; }\n.ryze-group-box { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; border: 1px solid color-mix(in srgb, var(--midground) 45%, transparent); border-radius: var(--theme-radius, 0); background: var(--background); }\n.ryze-group-box:focus-within { outline: 2px solid var(--midground); outline-offset: 3px; }\n.ryze-group-chip { display: inline-flex; align-items: stretch; max-width: 100%; min-width: 0; border: 1px solid color-mix(in srgb, var(--midground) 40%, transparent); border-radius: 3px; background: color-mix(in srgb, var(--midground) 7%, var(--background)); }\n.ryze-group-chip.is-current { border-color: var(--midground); }\n.ryze-chip-name { display: flex; align-items: baseline; gap: 8px; }\n.ryze-chip-name svg { flex: 0 0 14px; }\n.ryze-group-editor-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; flex-wrap: wrap; }\n.ryze-group-editor-heading .ryze-group-identity { min-width: 0; flex: 1 1 240px; }\n.ryze-group-editor-heading > button { flex: 0 0 auto; }\n.ryze-group-removal { border-top: 1px solid color-mix(in srgb, var(--midground) 25%, transparent); padding: 24px 0; }\n.ryze-group-removal h4 { font-size: 18px; margin: 0 0 10px; overflow-wrap: anywhere; }\n.ryze-group-editor-heading h4:focus, .ryze-group-removal h4:focus { outline: 2px solid var(--midground); outline-offset: 4px; }\n.ryze-group-chip button:disabled { cursor: default; opacity: .65; }\n.ryze-group-chip button { color: var(--midground); font: inherit; font-size: 16px; border: 0; background: transparent; padding: 8px 10px; cursor: pointer; text-align: left; min-width: 0; overflow-wrap: anywhere; }\n.ryze-group-chip button:first-child { flex: 1; }\n.ryze-group-chip small { display: block; font-size: 13px; margin-top: 2px; }\n.ryze-group-chip .ryze-chip-remove { flex: 0 0 44px; display: grid; place-items: center; padding: 8px; }\n.ryze-group-chip button:hover, .ryze-picker-toggle:hover { background: color-mix(in srgb, var(--midground) 10%, transparent); }\n.ryze-group-chip button:focus-visible, .ryze-picker-toggle:focus-visible { outline: 2px solid var(--midground); outline-offset: -3px; }\n.ryze-group-search-line { display: flex; flex: 1 1 250px; min-width: 0; align-items: center; }\n.ryze-groups .ryze-group-search-line input { width: 100%; min-width: 0; height: 44px; padding: 8px; border: 0; outline: none; box-shadow: none; background: transparent; color: var(--midground); font: inherit; font-size: 16px; }\n.ryze-group-search-line input::placeholder { color: color-mix(in srgb, var(--midground) 82%, var(--background)); }\n.ryze-picker-toggle { width: 44px; height: 44px; flex: 0 0 44px; display: grid; place-items: center; color: var(--midground); background: transparent; border: 0; cursor: pointer; }\n.ryze-picker-toggle svg { transform: rotate(90deg); }\n.ryze-group-dropdown { position: absolute; z-index: 20; top: calc(100% + 8px); left: 0; right: 0; max-height: 300px; overflow-y: auto; overscroll-behavior: contain; background: var(--background); border: 1px solid color-mix(in srgb, var(--midground) 45%, transparent); border-radius: var(--theme-radius, 0); }\n.ryze-group-dropdown ul { list-style: none; margin: 0; padding: 4px; }\n.ryze-group-dropdown li { display: block; padding: 12px; min-height: 44px; cursor: pointer; overflow-wrap: anywhere; }\n.ryze-group-dropdown li span, .ryze-group-dropdown li small { display: block; }\n.ryze-group-dropdown li small { font-size: 13px; margin-top: 4px; }\n.ryze-group-dropdown li:hover, .ryze-group-dropdown li.is-highlighted { background: color-mix(in srgb, var(--midground) 12%, var(--background)); }\n.ryze-group-dropdown li[aria-selected=\"true\"] span { font-weight: 700; }\n.ryze-group-dropdown > p { padding: 12px; }\n\n.ryze-nav-link { display: inline-flex; align-items: center; justify-content: center; color: inherit; padding: .65rem .95rem; min-height: 44px; font-size: .94rem; line-height: 1.35; text-decoration: none; border-bottom: 3px solid transparent; }\n.ryze-nav-link:hover, .ryze-crumb a:hover { background: var(--ryze-soft); }\n.ryze-crumb { display: flex; align-items: center; gap: .5rem; font-size: .87rem; }\n.ryze-crumb a { display: inline-flex; align-items: center; min-height: 44px; color: inherit; text-decoration: underline; text-underline-offset: .22em; }\n.ryze-crumb svg { width: .85rem; height: .85rem; }\n.ryze-crumb span, .ryze-hook-readings dt, .ryze-last-event span { color: color-mix(in srgb, var(--midground) 78%, var(--background)); }\n.ryze-hooks-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; padding: 1.1rem 0 1.7rem; border-bottom: 1px solid var(--ryze-rule); }\n.ryze-hooks-header p { margin: .4rem 0 0; }\n.ryze-hooks-layout { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(16rem, 1fr); gap: 2.2rem; align-items: start; padding-block: 1.75rem; }\n.ryze-hooks :is(.ryze-hook-section,.ryze-hook-health) h2 { font-size: 1.18rem; font-weight: 650; margin: 0 0 .9rem; letter-spacing: -.015em; }\n.ryze-hook-section + .ryze-hook-section { margin-top: 2rem; border-top: 1px solid var(--ryze-rule); padding-top: 1.5rem; }\n.ryze-hook-section label { font-size: .9rem; font-weight: 600; }\n.ryze-hook-section .ryze-field { margin: 1.2rem 0; gap: .35rem; }\n.ryze-hook-section .ryze-field input { max-width: 26rem; }\n.ryze-hook-section .ryze-field input[aria-invalid=true] { border-style: dashed; }\n.ryze-endpoint { margin-top: .4rem; display: flex; align-items: center; gap: .65rem; padding: .3rem; background: var(--ryze-soft); border: 1px solid var(--ryze-rule); border-radius: .35rem; }\n.ryze-endpoint > span { margin-left: .45rem; font: 650 .8rem/1.2 ui-monospace, monospace; }\n.ryze-page .ryze-endpoint input[readonly] { flex: 1; min-width: 0; border: 0; border-radius: 0; padding: 0 .15rem; background: transparent; font: .86rem/1.4 ui-monospace, monospace; text-overflow: ellipsis; }\n.ryze-page .ryze-endpoint button { flex: 0 0 auto; font-size: .86rem; }\n.ryze-copy-status:empty { display: none; }\n.ryze-copy-status { margin: .4rem 0 0; font-size: .85rem; }\n.ryze-event-list, .ryze-blockers { list-style: none; margin: .85rem 0 0; padding: 0; }\n.ryze-event-list li { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .3rem 1.25rem; padding: .55rem 0; border-bottom: 1px solid var(--ryze-rule); }\n.ryze-event-list code { font: .8rem/1.45 ui-monospace, monospace; overflow-wrap: anywhere; }\n.ryze-hook-health { min-width: 0; background: var(--ryze-soft); padding: 1.25rem; border-radius: .5rem; }\n.ryze-hook-readings { margin: 0; }\n.ryze-hook-readings > div { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: .25rem .65rem; border-bottom: 1px solid var(--ryze-rule); padding: .65rem 0; font-size: .88rem; }\n.ryze-hook-readings dd { margin: 0; font-weight: 600; }\n.ryze-hook-readings .ryze-dot { width: .48rem; height: .48rem; margin-right: .4rem; }\n.ryze-last-event { margin: 1rem 0; font-size: .86rem; }\n.ryze-last-event strong { display: block; margin-top: .2rem; font-weight: 600; font-variant-numeric: tabular-nums; }\n.ryze-hook-health .ryze-help, .ryze-blockers li { margin-top: .6rem; font-size: .86rem; }\n.ryze-desktop :is(.ryze-secondary, .ryze-primary):enabled:hover { border-color: var(--midground); }\n.ryze-desktop .ryze-primary:enabled:hover { background: color-mix(in srgb, var(--midground) 88%, var(--background)); }\n.ryze-desktop .ryze-secondary:enabled:hover { background: var(--ryze-soft); }\n@container ryze (max-width: 800px) {\n  .ryze-hooks-layout { grid-template-columns: minmax(0,1fr); gap: 1.5rem; }\n}\n@container ryze (max-width: 700px) {\n  .ryze-page .ryze-tabs { display: flex; flex-wrap: wrap; column-gap: .45rem; }\n  .ryze-tabs :is(button,.ryze-nav-link) { padding-inline: .45rem; font-size: .88rem; }\n  .ryze-hooks-header { padding: .6rem 0 1.1rem; }\n  .ryze-hooks-layout { padding-top: 1.25rem; }\n}\n@container ryze (max-width: 410px) {\n  .ryze-endpoint { display: grid; grid-template-columns: auto minmax(0,1fr); }\n  .ryze-endpoint button { grid-column: 1 / -1; }\n  .ryze-event-list li { display: grid; justify-content: start; }\n}\n"), h(App, {webapp: true, webhooksPage}))
+      });
+    }
     ctx.register({id: 'nav', area: SIDEBAR_NAV_AREA,
       data: {path: '/ryzeapi', label: 'RyzeAPI', codicon: 'comment-discussion'}});
+    restoreWebhooksLink();
 
   }
 };

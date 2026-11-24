@@ -42,6 +42,12 @@ class GroupStore:
     def list(self):
         return [dict(row) for row in self.db.execute('SELECT jid,name,members,present,synced,mode,trigger,senders FROM groups WHERE instance=? ORDER BY name COLLATE NOCASE,jid', (self.instance,))]
 
+    def permitted_count(self):
+        return self.db.execute(
+            "SELECT COUNT(*) FROM groups WHERE instance=? AND present=1 AND mode IN ('listen','respond')",
+            (self.instance,)
+        ).fetchone()[0]
+
     def policy(self, jid):
         row = self.db.execute('SELECT * FROM groups WHERE instance=? AND jid=?', (self.instance,jid)).fetchone()
         return dict(row) if row else {'mode':'blocked','trigger':'mentions','present':0}

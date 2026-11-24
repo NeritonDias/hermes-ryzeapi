@@ -2,7 +2,7 @@
 
 [![English](https://img.shields.io/badge/Language-English-196b62)](INSTALL.md) [![Português (Brasil)](https://img.shields.io/badge/Idioma-PT--BR-196b62)](INSTALL.pt-BR.md)
 
-[Voltar ao README](../README.pt-BR.md) · Distribuição **0.14.0**.
+[Voltar ao README](../README.pt-BR.md) · Distribuição **0.14.3**.
 
 ## Pré-requisitos
 
@@ -11,14 +11,15 @@
 - Conta RyzeAPI, cota disponível e WhatsApp autorizado para pareamento.
 - Dashboard autenticado e webhook público HTTPS. Domínios, portas de borda, certificados e autenticação são responsabilidade da sua infraestrutura.
 
-Ambiente validado para a v0.14.0: imagem oficial Hermes v0.23.4 em Linux ARM64. Este plugin não instala modelos, não fornece hospedagem e não usa uma conta do autor.
+Ambiente validado para a v0.14.3: imagem oficial Hermes v0.23.4 em Linux ARM64. Este plugin não instala modelos, não fornece hospedagem e não usa uma conta do autor.
 
 ## Instalar
 
 Revise o código e permissões: um plugin Python roda com acesso do processo Hermes.
 
 ```bash
-hermes plugins install NeritonDias/hermes-ryzeapi --ref 32f05862a82904f5b2c42d8a668165152c7e9f20 --no-deps --no-enable
+commit=$(git ls-remote --refs https://github.com/NeritonDias/hermes-ryzeapi.git refs/tags/v0.14.3 | cut -f1)
+hermes plugins install NeritonDias/hermes-ryzeapi --ref "${commit:?v0.14.3}" --no-deps --no-enable
 hermes plugins list
 ```
 
@@ -39,11 +40,15 @@ Na primeira carga do plugin habilitado, ryzeapi e ryzeapi-painel são copiadas d
 
 ## Webapp Hermes e Coolify
 
+O endpoint público do plugin é `POST /ryzeapi/events`. Ele exige o Bearer configurado para o webhook. O WebSocket conecta de saída a `wss://ryzeapi.cloud/ws/<instância>` com o TokenInstance no cabeçalho. Chamadas e alterações de etiqueta são observadas sem acionar o agente. No máximo três webhooks podem estar habilitados por instância. Abra `{{domain}}/#/ryzeapi/webhooks` para consultar a assinatura e configurar o receptor com o canal pausado. O endereço HTTPS sugerido vem de `webapp.public_url` desta instalação. Registros de outros destinos são preservados. A pausa desativa apenas o webhook do próprio plugin.
+
 No **Webapp do Hermes v0.23.4**, entre com a conta do proprietário e abra **Capabilities → Plugins** no perfil do gateway. Para uma instalação nova, use **Install from Git** com o repositório `NeritonDias/hermes-ryzeapi`. Se o pacote já estiver instalado, abra **RyzeAPI** nessa lista. Habilite **Agent** para carregar as ferramentas e **Desktop** para mostrar **RyzeAPI** no menu lateral. A escolha de Desktop fica salva neste navegador.
 
-Execute o comando de configuração abaixo no contêiner com `--lifecycle coolify --listener-host 0.0.0.0 --owner-subject "$OIDC_SUB" --owner-issuer "$OIDC_ISS"`. Use o ID exato do proprietário identificado pelo Hermes e o emissor OIDC verificado. A API administrativa recusa outras identidades. A porta 9131 fica na rede privada do proxy, sem publicação no host. Configure uma única rota Traefik para o hostname dedicado, caminho exato `/ryzeapi/events` e método POST, apontando para este gateway na porta 9131. O Webapp continua na porta interna 9120. Consulte o [modelo da rota](traefik.example.yaml). Para migrar uma configuração existente que usa 9120, execute novamente o configurador.
+Execute o comando de configuração abaixo no contêiner com `--lifecycle coolify --listener-host 0.0.0.0 --owner-subject "$OIDC_SUB" --owner-issuer "$OIDC_ISS"`. Use o ID exato do proprietário identificado pelo Hermes e o emissor OIDC verificado. A API administrativa recusa outras identidades. A porta 9131 fica na rede privada do proxy, sem publicação no host. Configure uma única rota Traefik para o hostname do Webapp (ou o hostname explícito do webhook), caminho exato `/ryzeapi/events` e método POST, apontando para este gateway na porta 9131. O Webapp continua na porta interna 9120. Consulte o [modelo da rota](traefik.example.yaml). Para migrar uma configuração existente que usa 9120, execute novamente o configurador.
 
-Após ativar ou alterar permissões, faça o redeploy apenas deste gateway quando solicitado. Atualize a tela para confirmar a saúde do receptor. Pausar revoga as permissões locais imediatamente e desativa o webhook próprio no provedor. Use **Reconciliar e pausar** se a resposta remota for incerta. Use instância, label e perfil dedicados. Coloque os arquivos aprovados em `$HERMES_HOME/workspace/attachments/` e informe um caminho relativo a esse diretório.
+Na imagem oficial com s6, o plugin solicita ao gateway deste perfil uma reinicialização com espera pelas tarefas em andamento quando necessário. Se a supervisão não puder ser verificada, faça o redeploy desse gateway quando solicitado. Atualize a tela para confirmar a saúde do receptor. Pausar revoga as permissões locais imediatamente e desativa o webhook próprio no provedor. Use **Reconciliar e pausar** se a resposta remota for incerta. Use um identificador exclusivo para o receptor e um perfil separado por gateway. Coloque os arquivos aprovados em `$HERMES_HOME/workspace/attachments/` e informe um caminho relativo a esse diretório.
+
+Em **Configurações**, marque as permissões do contato, confirme e clique em **Salvar firewall**. Para cada grupo, escolha o modo, confirme e clique em **Salvar grupo**. As permissões ficam no volume do perfil, inclusive com o canal pausado. **Ativar Hermes** é uma ação separada e exige o webhook configurado e um contato com permissão para comandar e receber.
 
 ## Configurar a publicação
 
@@ -154,3 +159,20 @@ hermes plugins uninstall ryzeapi
 ```
 
 Confirme as opções mostradas pela sua versão Hermes. O plugin não apaga sua conta RyzeAPI, aparelho, dados ou cópias das skills ao ser desabilitado/removido. Remova ryzeapi e ryzeapi-painel pelo gerenciador de skills se desejar; preserve antes suas personalizações. Arquivos privados de conversas/SQLite precisam de política de retenção própria.
+
+## Transcrição local de áudios
+
+O RyzeAPI usa o STT configurado no perfil Hermes. A opção **Enviar transcrições na conversa** controla o envio da cópia ao WhatsApp. Para reconhecer voz, o perfil precisa de um motor de transcrição funcional. Na imagem oficial para ARM64, uma opção local é usar whisper.cpp com FFmpeg e o modelo multilíngue Small Q5_1. O processamento usa CPU e não exige uma chave de API.
+
+Coloque o executável `whisper-cli` compilado para a arquitetura em `$HERMES_HOME/ryzeapi/stt/whisper-cli` e o modelo em `$HERMES_HOME/ryzeapi/stt/model.bin`, legíveis pelo usuário do gateway. A versão validada do whisper.cpp é v1.9.6. Verifique o SHA-256 do arquivo `ggml-small-q5_1.bin` antes de instalá-lo: `ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb`. [Código oficial](https://github.com/ggml-org/whisper.cpp/tree/v1.9.6) · [Modelos publicados](https://huggingface.co/ggerganov/whisper.cpp)
+
+Com a extensão instalada, execute como usuário do Hermes:
+
+```sh
+profile=${HERMES_HOME:-"$HOME/.hermes"}
+hermes config set HERMES_LOCAL_STT_COMMAND "\"$profile/plugins/ryzeapi/scripts/whisper_cpp.sh\" \"$profile/ryzeapi/stt\" {input_path} {output_dir}/transcript.txt {language}"
+hermes config set stt.local.language pt
+hermes config set stt.provider local_command
+```
+
+Reinicie o gateway deste perfil em uma janela ociosa. Envie uma nota de voz de um número autorizado e confira a resposta. Inclua a pasta do motor e do modelo no backup do volume persistente.

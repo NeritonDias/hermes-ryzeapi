@@ -27,18 +27,55 @@ const h = React.createElement;
 function Button({ outlined, children, ...props }) {
   return h('button', {...props, className: outlined ? 'ryze-secondary' : 'ryze-primary'}, children);
 }
+// The Hermes shell can restore its last tab before disk plugin routes are registered.
+// Honor only a direct Webapp link during startup. User navigation always wins.
+function restoreWebhooksLink() {
+  const marker = Symbol.for('ryzeapi.webhooks.initialNavigation');
+  if (window[marker]) return;
+  window[marker] = true;
+  const navigation = performance.getEntriesByType('navigation')[0];
+  const wanted = '#/ryzeapi/webhooks';
+  if (!navigation || !/^https?:$/.test(location.protocol) || new URL(navigation.name).hash !== wanted || navigator.userActivation?.hasBeenActive) return;
+  let stopped = false;
+  function stop() {
+    stopped = true;
+    clearTimeout(expiry);
+    window.removeEventListener('hashchange', check);
+    window.navigation?.removeEventListener('currententrychange', check);
+    window.removeEventListener('pointerdown', stop, true);
+    window.removeEventListener('keydown', stop, true);
+  }
+  function restore() {
+    if (!stopped && !navigator.userActivation?.hasBeenActive && location.hash !== wanted) {
+      location.replace(wanted);
+    }
+  }
+  function check(event) {
+    if (event.navigationType === 'traverse') stop();
+    else requestAnimationFrame(restore);
+  }
+  const expiry = setTimeout(stop, 5000);
+  window.addEventListener('hashchange', check);
+  window.navigation?.addEventListener('currententrychange', check);
+  window.addEventListener('pointerdown', stop, true);
+  window.addEventListener('keydown', stop, true);
+  requestAnimationFrame(restore);
+}
 export default {
   id: 'ryzeapi', name: 'RyzeAPI',
   register(ctx) {
     const api = (path, data) => ctx.rest(path, data === undefined ? {} : {method: 'POST', body: {...data, _ryze_ui: true}, timeoutMs: 90000});
     const App = createRyzePanel(React, { Button, Input: 'input', Label: 'label' }, api);
-    ctx.register({
-      id: 'whatsapp', area: ROUTES_AREA, data: {path: '/ryzeapi'},
-      render: () => h('div', {className: 'ryze-desktop ryze-surface'},
-        h('style', null, STYLE), h(App))
-    });
+    for (const [id, path, webhooksPage] of [['whatsapp', '/ryzeapi', false], ['webhooks', '/ryzeapi/webhooks', true]]) {
+      ctx.register({
+        id, area: ROUTES_AREA, data: {path},
+        render: () => h('div', {className: 'ryze-desktop ryze-surface'},
+          h('style', null, STYLE), h(App, {webapp: true, webhooksPage}))
+      });
+    }
     ctx.register({id: 'nav', area: SIDEBAR_NAV_AREA,
       data: {path: '/ryzeapi', label: 'RyzeAPI', codicon: 'comment-discussion'}});
+    restoreWebhooksLink();
 
   }
 };
