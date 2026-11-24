@@ -241,6 +241,20 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
     const [pickedGroups, setPickedGroups] = useState({});
     const [buffer, setBuffer] = useState('10');
     const [echoTranscripts, setEchoTranscripts] = useState(true);
+    const [activation, setActivation] = useState(null);
+    const [activationRevision, setActivationRevision] = useState(0);
+    useEffect(() => {
+      const instance = state?.instance;
+      if (!instance || state.enabled) return;
+      let current = true;
+      api('/activation-status').then(result => {
+        if (current && result.instance === instance) setActivation(result);
+      }).catch(() => {
+        if (current) setActivation({instance, reasons: ['Não foi possível verificar os requisitos de ativação. Clique em Atualizar.']});
+      });
+      return () => { current = false; };
+    }, [state?.instance, state?.enabled, state?.allowed_users, state?.allowed_recipients, state?.webhook_url, state?.hook_pending, activationRevision]);
+    const blockers = activation?.instance === state?.instance ? (activation?.reasons || []) : [];
     const [transport, setTransport] = useState(null), [transportError, setTransportError] = useState(false);
     const transportRequest = useRef(0);
     async function refreshDiagnostics() {
@@ -520,6 +534,13 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
           h('div', { className: 'ryze-actions' }, submit('Salvar transcrições'),
             h('span', { className: 'ryze-help' }, 'Salvo: ', (state.echo_transcripts ?? true) ? 'enviar na conversa' : 'somente para a IA'))),
         h('p', { className: 'ryze-help' }, 'Os áudios mantêm sua posição na sequência de mensagens. Esta opção não altera o buffer nem o firewall.')),
+      h('section', {className: 'ryze-firewall', 'aria-labelledby': 'ryze-hook-title'},
+        h('h3', {id: 'ryze-hook-title'}, 'Webhook do plugin'),
+        state.webhook_url ? h('p', null, 'Endereço de recebimento: ', h('code', null, state.webhook_url)) :
+          button('Usar webhook deste Webapp', () => run('Configurando webhook…', async () => {
+            await api('/webhook/setup', {confirm: true}); await refresh();
+          })),
+        h('p', {className: 'ryze-help'}, 'O proxy deve encaminhar POST /ryzeapi/events à porta interna do receptor (padrão 9131). Ao ativar o Hermes, o plugin registra seu webhook autenticado e conecta o WebSocket.')),
       h('section', { className: 'ryze-firewall', 'aria-labelledby': 'ryze-firewall-title' },
         h('h3', { id: 'ryze-firewall-title' }, 'Firewall de contatos'),
         localFeedback('firewall'),
@@ -534,8 +555,8 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
             submit('Salvar firewall', !permit || (state.enabled && (!owners || !recipients))))),
         !state.enabled && h('div', {className: 'ryze-actions'},
           button('Ativar Hermes', () => run('Ativando firewall…', () => saveFirewall(true)),
-            !connected || !state.webhook_url || !owners || owners !== state.allowed_users || recipients !== state.allowed_recipients, true),
-          h('p', {className: 'ryze-help'}, !state.webhook_url ? 'O canal está pausado. Configure a URL do webhook para ativar. Você já pode salvar contatos e grupos.' : 'Para ativar, conecte o WhatsApp e salve ao menos um contato com permissão para comandar e receber.'))),
+            !connected || blockers.length > 0 || !state.webhook_url || !owners || owners !== state.allowed_users || recipients !== state.allowed_recipients, true),
+          h('p', {className: 'ryze-help'}, blockers.length ? blockers.join(' ') : !state.webhook_url ? 'O canal está pausado. Configure a URL do webhook para ativar. Você já pode salvar contatos e grupos.' : 'Para ativar, conecte o WhatsApp e salve ao menos um contato com permissão para comandar e receber.'))),
       h(Groups, { key: state.instance, instance: state.instance, drafts: groupDrafts, setDrafts: setGroupDrafts, picked: pickedGroups, setPicked: setPickedGroups, disabled: !!busy,
         onSaved: count => setState(current => current?.instance === state.instance ? {...current, saved_groups: count} : current) }));
     const link = (label, action) => h('button', { type: 'button', className: 'ryze-link', disabled: !!busy, onClick: action }, label, icon('arrow'));
@@ -559,10 +580,10 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
       h('section', { className: 'ryze-channel', 'aria-label': 'Saúde do canal' },
         h('div', { className: 'ryze-channel-lead' }, h('span', { className: active ? 'is-good' : '' }, icon(active ? 'check' : 'info')),
           h('div', null, h('h3', null, active ? 'Seu canal está pronto' : !state.instance ? 'Vamos conectar seu canal' : !state.enabled ? 'Hermes está pausado' : transportError || !transport ? 'Estado não confirmado' : transport.maintenance_active ? 'Canal em manutenção' : 'Seu canal precisa de atenção'),
-            h('p', { className: 'ryze-help' }, active ? 'Pronto para receber mensagens autorizadas.' : state.enabled ? 'Confira a saúde do receptor em Métricas.' : 'Ative o canal após revisar as permissões.'))),
+            h('p', { className: 'ryze-help' }, active ? 'Pronto para receber mensagens autorizadas.' : state.enabled ? 'Confira a saúde do receptor em Métricas.' : blockers.length ? blockers.join(' ') : !state.webhook_url ? 'Falta configurar a URL HTTPS do webhook deste gateway.' : 'Ative o canal em Configurações.'))),
         h('dl', { className: 'ryze-channel-facts' }, ...[
           ['WhatsApp', channelStates[transport?.whatsapp_state] || states[connection?.status] || 'Não confirmado', transport?.whatsapp_state ? transport.whatsapp_state === 'connected' : connected],
-          ['Transporte', transport?.websocket_connected ? 'WebSocket' : transport?.running ? 'Webhook de contingência' : 'Não confirmado', transport?.websocket_connected],
+          ['Transporte', transport?.websocket_connected ? 'WebSocket + webhook' : transport?.running ? 'Webhook de contingência' : !state.enabled ? 'Desligado neste gateway' : 'Não confirmado', transport?.websocket_connected],
           ['Hermes', !state.enabled ? 'Pausado' : active ? 'Ativo' : transport?.maintenance_active ? 'Manutenção' : 'Não confirmado', active]
         ].map(([label, value, good]) => h('div', { key: label }, h('dt', null, h('span', { className: 'ryze-dot ' + (good ? 'is-good' : 'is-muted'), 'aria-hidden': true }), label), h('dd', null, value))))),
       state.instance && !state.enabled && h('div', { className: 'ryze-actions' }, button('Configurar canal', () => changeStep(connected ? 3 : 2))),
@@ -616,7 +637,7 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
         h('div', { className: 'ryze-title-actions' }, state?.instance && h('div', null, h('label', { htmlFor: 'ryze-inspect' }, 'Instância selecionada'),
           h('select', { id: 'ryze-inspect', value: tab === 1 && inspected ? inspected : state.instance, disabled: !!busy, onChange: e => { const n = e.target.value; setInspected(n); navigate(1); if (n === state.instance) setStep(2); } },
             ...[state.instance, ...items.map(i => i.name).filter(n => n !== state.instance)].map(n => h('option', { key: n, value: n }, n)))),
-          button(h(React.Fragment, null, icon('refresh'), 'Atualizar'), () => run('Atualizando…', async () => { const next = await refresh(); if (next.instance) await checkConnection(); if (next.enabled) await refreshDiagnostics(); if (next.credential_saved) { const result = await api('/instances'); setItems(result.instances); setListLoaded(true); } }), false, true))),
+          button(h(React.Fragment, null, icon('refresh'), 'Atualizar'), () => run('Atualizando…', async () => { setActivationRevision(n => n + 1); const next = await refresh(); if (next.instance) await checkConnection(); if (next.enabled) await refreshDiagnostics(); if (next.credential_saved) { const result = await api('/instances'); setItems(result.instances); setListLoaded(true); } }), false, true))),
       state?.hook_pending && h('div', { className: 'ryze-recovery', role: 'alert' },
         h('strong', null, 'Conferir webhook remoto'),
         h('p', null, 'O estado do receptor está pendente. Confira o registro antes de trocar a instância.'),

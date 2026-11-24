@@ -228,7 +228,7 @@ class SafeHttpTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_websocket_changes_only_when_needed_and_reads_back(self):
         calls = []
-        desired = {'enabled':True,'events':['message.exchange','instance.state','message.status','group.flow'],'mediaBase64':True}
+        desired = {'enabled':True,'events':['message.exchange','instance.state','message.status','group.flow','call.update','label.update'],'mediaBase64':True}
         def handle(req):
             calls.append(req.method)
             return httpx.Response(200,json={'success':True,'websocket':{} if len(calls)==1 else desired})

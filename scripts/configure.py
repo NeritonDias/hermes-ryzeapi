@@ -4,7 +4,7 @@ from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('_ryze_setup',root/'__init__.py',submodule_search_locations=[str(root)])
 module=importlib.util.module_from_spec(spec);sys.modules[spec.name]=module;spec.loader.exec_module(module)
-from _ryze_setup.infrastructure import validate,load
+from _ryze_setup.infrastructure import validate,save
 from _ryze_setup.settings import directory
 
 def main():
@@ -24,13 +24,6 @@ def main():
     except (ValueError,TypeError,AttributeError) as exc:parser.error(str(exc))
     if not value['webhook_url']:parser.error('A public HTTPS webhook URL is required')
     if not check:
-        folder=directory();folder.mkdir(mode=0o700,parents=True,exist_ok=True)
-        fd,name=tempfile.mkstemp(prefix='.deployment-',dir=folder)
-        try:
-            with os.fdopen(fd,'w') as stream:
-                json.dump(value,stream,indent=2);stream.flush();os.fsync(stream.fileno())
-            os.replace(name,folder/'deployment.json')
-        finally:
-            if os.path.exists(name):os.unlink(name)
+        save(value)
     print('Validated.' if check else 'Deployment configuration saved. Restart your dashboard and gateway to apply it. No credentials or firewall settings were changed.')
 if __name__=='__main__':main()

@@ -211,10 +211,29 @@ class RealtimeClientTests(unittest.IsolatedAsyncioTestCase):
         seen=[]
         def handle(req):
             seen.append(req)
-            return httpx.Response(200,json={'success':True,'websocket':{'enabled':True,'events':['message.exchange','instance.state','message.status','group.flow'],'mediaBase64':True}})
+            return httpx.Response(200,json={'success':True,'websocket':{'enabled':True,'events':['message.exchange','instance.state','message.status','group.flow','call.update','label.update'],'mediaBase64':True}})
         client=RyzeClient('hermes-test','fixture',transport=httpx.MockTransport(handle))
         await client.ensure_websocket();await client.close()
         self.assertEqual([r.method for r in seen],['GET'])
+
+    async def test_first_websocket_setup_and_shared_filters(self):
+        from ryzeapi.telemetry import EVENTS
+        for initial in (None, [], list(reversed(EVENTS))):
+            calls = []
+            def handle(req):
+                calls.append(req.method)
+                if req.url.path.endswith('/list'):
+                    return httpx.Response(200, json={'success': True, 'instances': [{'name': 'hermes-test', 'status': 'connected'}]})
+                if initial is None and len(calls) == 1:
+                    return httpx.Response(404)
+                return httpx.Response(200, json={'success': True, 'websocket': {
+                    'enabled': True, 'mediaBase64': True, 'events': EVENTS if initial is None else initial}})
+            client = RyzeClient('hermes-test', 'fixture', transport=httpx.MockTransport(handle))
+            try:
+                await client.ensure_websocket()
+                self.assertEqual(calls, ['GET','GET','POST','GET'] if initial is None else ['GET'])
+            finally:
+                await client.close()
 
     async def test_media_send_contract(self):
         def handle(req):

@@ -38,6 +38,40 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
         await test_management.ManagementTests.setup_selected(self)
         return await self.client.post('/activate', json={'allowed_users': test_management.OWNER, 'confirm': True})
 
+    async def test_independent_webhook_does_not_claim_other_integrations(self):
+        from ryzeapi.webhooks import confirmed
+        from ryzeapi.telemetry import EVENTS
+        await test_management.ManagementTests.setup_selected(self)
+        peer = {'enabled': True, 'label': 'other', 'url': 'https://other.example.com/receive'}
+        self.hook = peer
+        self.calls.clear()
+        report = await self.client.get('/activation-status')
+        self.assertEqual(report.status_code, 200)
+        self.assertTrue(all(c[1] == 'GET' for c in self.calls))
+        own = dict(label='owned', url=test_management.HOOK_URL, authorization='Bearer fixture',
+                   enabled=True, byEvents=False, mediaBase64=True, events=EVENTS)
+        v = dict(independent_webhook=True, hook_label='owned', hook_url=own['url'], webhook_secret='fixture', hook_events=EVENTS)
+        self.assertTrue(confirmed(v, [peer, own]))
+        self.assertFalse(confirmed(v, [dict(peer, label='owned'), own]))
+        self.assertFalse(confirmed(v, [dict(peer, url=own['url']+'?other'), own]))
+        self.assertFalse(confirmed(v, [peer, dict(own, events=EVENTS[:-1])]))
+        self.assertFalse(confirmed(dict(v, independent_webhook=False), [peer, own]))
+
+    async def test_setup_persists_only_public_webapp_callback(self):
+        import json
+        d=infrastructure.load()
+        d.update(webhook_url='', public_origin='https://webapp.example.com', lifecycle='coolify')
+        (settings.directory()/'deployment.json').write_text(json.dumps(d))
+        class LocalOwnerRequest:
+            async def body(self):
+                return b'{"confirm": true}'
+            async def json(self):
+                return {'confirm': True}
+        result=await m.setup_webhook(LocalOwnerRequest())
+        self.assertEqual(result['webhook_url'], 'https://webapp.example.com/ryzeapi/events')
+        self.assertEqual(infrastructure.load()['listener_host'],'0.0.0.0')
+        self.assertFalse(self.calls)
+
     async def test_foreign_webhook_receives_no_writes(self):
         self.hook = {'label': infrastructure.load()['webhook_label'], 'enabled': True, 'url': 'https://other.example.com', 'authorization': 'different'}
         response = await self.activate()

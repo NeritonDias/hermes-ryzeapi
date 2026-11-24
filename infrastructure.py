@@ -1,5 +1,5 @@
 """Deployment-specific settings, separate from credentials and checked-in code."""
-import json,re
+import json,re,os,tempfile
 from urllib.parse import urlsplit
 from .settings import directory
 
@@ -33,7 +33,7 @@ def validate(value):
         raise ValueError('Set both owner_subject and owner_issuer')
     if not isinstance(result['gateway_service'],str) or not re.fullmatch(r'[A-Za-z0-9_.@-]{1,100}\.service',result['gateway_service']):
         raise ValueError('gateway_service must be a systemd user service name, not a command')
-    if not isinstance(result['webhook_label'],str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',result['webhook_label']):
+    if not isinstance(result['webhook_label'],str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,50}',result['webhook_label']):
         raise ValueError('Invalid webhook_label')
     return result
 
@@ -42,3 +42,19 @@ def load():
     return validate(json.loads(path.read_text()) if path.exists() else {})
 
 def health_url():return 'http://127.0.0.1:'+str(load()['listener_port'])+'/health'
+
+def save(value):
+    config = validate(value)
+    folder = directory()
+    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with tempfile.NamedTemporaryFile(mode='w', dir=folder, delete=False) as f:
+        tmp = f.name
+    try:
+        with open(tmp, 'w') as f:
+            json.dump(config, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, folder / 'deployment.json')
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)

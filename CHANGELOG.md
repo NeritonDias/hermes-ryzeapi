@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.2
+
+The Webapp reports activation blockers for the selected instance. The receiver subscribes to all six RyzeAPI event families via webhook and WebSocket. Call and label notifications are observed without triggering replies. WebSocket provisioning handles a new instance with no saved settings, reordered subscriptions and an existing all-events subscription. The plugin manages its own label and endpoint. Other destinations retain their own subscriptions.
+
 ## 0.14.1
 
 Saving contact permissions and group policies works while the channel is paused. Activation is a separate action. The overview shows saved permission counts. The provider's group event settings are applied when the channel is activated.

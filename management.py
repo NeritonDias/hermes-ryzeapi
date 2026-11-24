@@ -11,7 +11,7 @@ from .client import RyzeClient, RyzeError
 from .telemetry import EVENTS
 from .groups import GroupStore, group_id
 from . import infrastructure
-from .webhooks import confirmed, owned_hook
+from .webhooks import separate_destination, confirmed, owned_hook
 
 mutation_lock = asyncio.Lock()
 upstream_clients = None
@@ -399,6 +399,63 @@ async def read_hooks(value):
     return hooks
 
 
+def activation_conflict(value, hooks, label, url):
+    active = [h for h in hooks if h['enabled']]
+    if len(active) >= 3 and not any(owned_hook(value, h, label, url) for h in active):
+        return 'A RyzeAPI já tem três webhooks ativos nesta instância.'
+    for hook in hooks:
+        if separate_destination(hook, label, url):
+            continue
+        if hook['enabled'] and not owned_hook(value, hook, label, url):
+            return 'O label ou endereço do webhook já está em uso. Configure um destino exclusivo para este plugin.'
+        if hook['label'] == label and not hook['enabled'] and (
+                value.get('hook_label') != label or value.get('hook_instance') != value.get('instance')):
+            return 'Esse label já está reservado. Configure um label exclusivo.'
+    return ''
+
+
+@router.post('/webhook/setup')
+async def setup_webhook(request: Request):
+    data = await body(request)
+    if data.get('confirm') is not True:
+        raise HTTPException(400, 'Confirme a configuração do webhook.')
+    async with mutation():
+        value = settings.load()
+        editable(value)
+        d = infrastructure.load()
+        if not d['public_origin'].startswith('https://'):
+            raise HTTPException(409, 'Configure primeiro a origem HTTPS do Webapp na implantação.')
+        if not d['webhook_url']:
+            d['webhook_url'] = d['public_origin'].rstrip('/') + '/ryzeapi/events'
+            if d['lifecycle'] == 'coolify':
+                d['listener_host'] = '0.0.0.0'
+            infrastructure.save(d)
+        return {'webhook_url': d['webhook_url']}
+
+
+@router.get('/activation-status')
+async def activation_status():
+    value = settings.load()
+    name, _ = selected(value)
+    deployment = infrastructure.load()
+    reasons = []
+    if not deployment['webhook_url']:
+        reasons.append('Falta configurar a URL HTTPS do webhook deste gateway.')
+    if not value.get('allowed_users') or not settings.recipient_list(value):
+        reasons.append('Salve um contato que possa comandar o Hermes e receber respostas.')
+    if value.get('hook_pending'):
+        reasons.append('Há uma alteração de webhook pendente de reconciliação.')
+    try:
+        hooks = await read_hooks(value)
+    except HTTPException:
+        reasons.append('Não foi possível verificar os webhooks da instância na RyzeAPI.')
+    else:
+        conflict = activation_conflict(value, hooks, deployment['webhook_label'], deployment['webhook_url'])
+        if conflict:
+            reasons.append(conflict)
+    return {'instance': name, 'reasons': reasons}
+
+
 async def verify_hook(value, enabled):
     label, url = hook_identity(value)
     hooks = await read_hooks(value)
@@ -445,7 +502,10 @@ async def apply_settings(value):
 
 @router.post('/activate')
 async def activate(request: Request):
-    data = await body(request)
+    return await activate_channel(await body(request))
+
+
+async def activate_channel(data):
     deployment = infrastructure.load()
     label = deployment['webhook_label']
     url = deployment['webhook_url']
@@ -466,18 +526,15 @@ async def activate(request: Request):
         if not item or public_instance(item)['status'] != 'connected':
             raise HTTPException(409, 'Conecte o WhatsApp antes de ativar o Hermes.')
         hooks = await read_hooks(value)
-        for hook in hooks:
-            if hook['enabled'] and not owned_hook(value, hook, label, url):
-                raise HTTPException(409, 'Já existe um receptor ativo nesta instância. Escolha uma instância dedicada.')
-            if hook['label'] == label and not hook['enabled'] and (
-                    value.get('hook_label') != label or value.get('hook_instance') != name):
-                raise HTTPException(409, 'Esse label já está reservado. Configure um label exclusivo.')
+        conflict = activation_conflict(value, hooks, label, url)
+        if conflict:
+            raise HTTPException(409, conflict)
         if (settings.directory() / 'groups.db').exists():
             with GroupStore(settings.directory(), name) as store:
                 groups_enabled = store.permitted_count() > 0
             if groups_enabled:
                 await enable_group_events(token, name)
-        value.update(**permissions, enabled=False, hook_pending=True, hook_url=url, hook_label=label, hook_instance=name,
+        value.update(**permissions, enabled=False, hook_pending=True, hook_url=url, hook_label=label, hook_instance=name, hook_events=list(EVENTS), independent_webhook=True,
                      webhook_secret=value.get('webhook_secret') or secrets.token_urlsafe(48))
         settings.save(value)
         try:

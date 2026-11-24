@@ -3,7 +3,7 @@
   "label": "RyzeAPI",
   "description": "Conecte sua conta, escolha uma instância e vincule o WhatsApp ao Hermes.",
   "icon": "MessageSquare",
-  "version": "0.14.1",
+  "version": "0.14.2",
   "tab": {"path": "/ryzeapi", "position": "after:channels"},
   "entry": "dist/index.js",
   "css": "dist/style.css",

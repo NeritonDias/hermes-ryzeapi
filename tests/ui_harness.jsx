@@ -39,6 +39,7 @@ window.__HERMES_PLUGIN_SDK__ = {React, components:{Button,Input,Label}, fetchJSO
   if (path==='/select') {state.instance=data.name; return {instance:item(data.name)};}
   if (path==='/connect') return data.number ? {pairing_code:'ABCD-EFGH',expires_in:60,status:'pairing'} :
     {qr:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXuoAAAAASUVORK5CYII=',expires_in:20,status:'qr'};
+  if (path==='/activation-status') return {instance:state.instance,reasons:[]};
   if (path==='/connection') return {instance:item(state.instance)};
   if (path==='/activate') {Object.assign(state,{enabled:true,runtime_running:true,webhook_configured:true,allowed_users:data.allowed_users,allowed_recipients:data.allowed_recipients}); return {...state};}
   if (path==='/firewall') {Object.assign(state,{allowed_users:data.allowed_users,allowed_recipients:data.allowed_recipients});return {saved:true,...state};}

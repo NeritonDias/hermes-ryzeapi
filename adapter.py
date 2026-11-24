@@ -271,6 +271,11 @@ class RyzeAdapter(BasePlatformAdapter):
         # Passive archive is independent of the contact command allowlist and never invokes the model.
         normalized = canonical_envelope(payload)
         data = normalized.get('data') if isinstance(normalized,dict) else None
+        if (isinstance(normalized, dict) and normalized.get('event') in {'call.update', 'label.update'}
+                and isinstance(normalized.get('instanceData'), dict)
+                and normalized['instanceData'].get('instance') == self.instance):
+            self.stats[transport + '_' + normalized['event']] += 1
+            return 'observed'
         msg = data.get('message') or {} if isinstance(data,dict) else {}
         if (isinstance(msg,dict) and msg.get('direction')=='incoming' and
                 isinstance(normalized.get('instanceData'),dict) and normalized['instanceData'].get('instance')==self.instance):

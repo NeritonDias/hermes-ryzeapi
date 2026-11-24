@@ -2,7 +2,7 @@
 
 [![English](https://img.shields.io/badge/Language-English-196b62)](INSTALL.md) [![Português (Brasil)](https://img.shields.io/badge/Idioma-PT--BR-196b62)](INSTALL.pt-BR.md)
 
-[Voltar ao README](../README.pt-BR.md) · Distribuição **0.14.1**.
+[Voltar ao README](../README.pt-BR.md) · Distribuição **0.14.2**.
 
 ## Pré-requisitos
 
@@ -11,15 +11,15 @@
 - Conta RyzeAPI, cota disponível e WhatsApp autorizado para pareamento.
 - Dashboard autenticado e webhook público HTTPS. Domínios, portas de borda, certificados e autenticação são responsabilidade da sua infraestrutura.
 
-Ambiente validado para a v0.14.1: imagem oficial Hermes v0.23.4 em Linux ARM64. Este plugin não instala modelos, não fornece hospedagem e não usa uma conta do autor.
+Ambiente validado para a v0.14.2: imagem oficial Hermes v0.23.4 em Linux ARM64. Este plugin não instala modelos, não fornece hospedagem e não usa uma conta do autor.
 
 ## Instalar
 
 Revise o código e permissões: um plugin Python roda com acesso do processo Hermes.
 
 ```bash
-commit=$(git ls-remote --refs https://github.com/NeritonDias/hermes-ryzeapi.git refs/tags/v0.14.1 | cut -f1)
-hermes plugins install NeritonDias/hermes-ryzeapi --ref "${commit:?v0.14.1}" --no-deps --no-enable
+commit=$(git ls-remote --refs https://github.com/NeritonDias/hermes-ryzeapi.git refs/tags/v0.14.2 | cut -f1)
+hermes plugins install NeritonDias/hermes-ryzeapi --ref "${commit:?v0.14.2}" --no-deps --no-enable
 hermes plugins list
 ```
 
@@ -39,6 +39,8 @@ O scanner nativo Hermes pode emitir CAUTION nesta versão por fixtures de testes
 Na primeira carga do plugin habilitado, ryzeapi e ryzeapi-painel são copiadas de modo gerenciado para skills/ do perfil, e registradas também sob namespace. Abra uma nova sessão: skills_list deve listar ambas. Instalar com --no-enable deixa o código inativo até você habilitá-lo.
 
 ## Webapp Hermes e Coolify
+
+O endpoint público do plugin é `POST /ryzeapi/events`. Ele exige o Bearer configurado para o webhook. O WebSocket conecta de saída a `wss://ryzeapi.cloud/ws/<instância>` com o TokenInstance no cabeçalho. Chamadas e alterações de etiqueta são observadas sem acionar o agente. No máximo três webhooks podem estar habilitados por instância. Em Configurações, use **Usar webhook deste Webapp** para escolher o endereço do próprio domínio. Registros de outros destinos são preservados. A pausa desativa apenas o webhook do próprio plugin.
 
 No **Webapp do Hermes v0.23.4**, entre com a conta do proprietário e abra **Capabilities → Plugins** no perfil do gateway. Para uma instalação nova, use **Install from Git** com o repositório `NeritonDias/hermes-ryzeapi`. Se o pacote já estiver instalado, abra **RyzeAPI** nessa lista. Habilite **Agent** para carregar as ferramentas e **Desktop** para mostrar **RyzeAPI** no menu lateral. A escolha de Desktop fica salva neste navegador.
 
