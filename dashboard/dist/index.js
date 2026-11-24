@@ -51,6 +51,7 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
     if (error?.status === 504) return 'A solicitação demorou demais. Atualize o estado antes de tentar novamente.';
     return 'Não foi possível confirmar a operação. Atualize o estado antes de tentar novamente.';
   }
+  const quantity = (count, one, many) => count + ' ' + (count === 1 ? one : many);
   const numbers = value => [...new Set(String(value || '').split(/[\s,;]+/).filter(Boolean))];
   function Contacts({ owners, recipients, onChange, disabled }) {
     const [number, setNumber] = useState(''), [message, setMessage] = useState('');
@@ -194,7 +195,7 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
                   h('span', null, row.name), h('small', null, row.jid, chosen.some(item => item.jid === row.jid) ? ' · Selecionado' : '')))),
               !visible.length && h('p', { role: 'status' }, 'Nenhum grupo corresponde à busca.')))),
         h('p', { id: 'ryze-group-picker-help', className: 'ryze-help' }, 'Clique no nome de um grupo para editar; no X para remover e bloquear. Adicionar à seleção só libera acesso depois de salvar.'),
-        h('p', { className: 'ryze-help', role: 'status' }, chosen.length, ' selecionados · ', rows.length, ' disponíveis · Última sincronização: ', dateText(Math.max(...rows.map(r => r.synced || 0)))),
+        h('p', { className: 'ryze-help', role: 'status' }, quantity(chosen.length, 'selecionado', 'selecionados'), ' · ', quantity(rows.length, 'disponível', 'disponíveis'), ' · Última sincronização: ', dateText(Math.max(...rows.map(r => r.synced || 0)))),
         !chosen.length && h('p', null, 'Nenhum grupo selecionado. Abra a busca para escolher.'),
         removalGroup && h('section', { className: 'ryze-group-removal', 'aria-labelledby': 'ryze-group-remove-title' },
           h('h4', { id: 'ryze-group-remove-title', tabIndex: -1 }, 'Remover ', removalGroup.name, '?'),
@@ -215,7 +216,7 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
           return h('article', { id: 'ryze-group-editor', key: row.jid, className: 'ryze-group-row', 'aria-label': row.name },
             h('div', { className: 'ryze-group-editor-heading' },
               h('div', { className: 'ryze-group-identity' }, h('h4', { id: 'ryze-group-editor-title', tabIndex: -1 }, 'Editar ', row.name), h('p', { className: 'ryze-help' }, row.jid),
-                h('p', null, 'Salvo: ', labels[row.mode], !row.present ? ' · Não encontrado na última sincronização' : row.members == null ? '' : ' · ' + row.members + ' membros')),
+                h('p', null, 'Salvo: ', labels[row.mode], !row.present ? ' · Não encontrado na última sincronização' : row.members == null ? '' : ' · ' + quantity(row.members, 'membro', 'membros'))),
               h('button', { type: 'button', className: 'ryze-link', disabled: !!busy || disabled, onClick: closeEditor }, 'Fechar edição')),
             h('div', { className: 'ryze-group-controls' },
               select('mode', 'Modo do grupo', [['blocked','Bloqueado'],['listen','Só ouvir'],['respond','Ouvir e responder']], !row.present),
@@ -726,7 +727,7 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
           h('dl', null, ...[
             ['Buffer', (state.buffer_seconds ?? 10) + ' s', 'Tempo para agrupar mensagens antes do processamento.'],
             ['Transcrições', state.echo_transcripts === false ? 'Só para IA' : 'Na conversa', state.echo_transcripts === false ? 'As transcrições são enviadas apenas para a IA do Hermes.' : 'As transcrições também são enviadas na conversa.'],
-            ['Permissões salvas', numbers(state.allowed_recipients).length + ' contatos · ' + (state.saved_groups ?? 0) + ' grupos', numbers(state.allowed_users).length + ' contatos podem comandar o Hermes.']
+            ['Permissões salvas', quantity(numbers(state.allowed_recipients).length, 'contato', 'contatos') + ' · ' + quantity(state.saved_groups ?? 0, 'grupo', 'grupos'), quantity(numbers(state.allowed_users).length, 'contato pode', 'contatos podem') + ' comandar o Hermes.']
           ].map(([label, value, help]) => h('div', { key: label }, h('dt', null, label), h('dd', null, value), h('dd', { className: 'ryze-help' }, help)))),
           button(h(React.Fragment, null, icon('settings'), 'Editar configurações'), () => { setStep(3); navigate(3); }, false, true))),
       h('section', { className: 'ryze-other' }, h('h3', null, 'Outras instâncias'), instanceTable(items.filter(item => item.name !== state.instance))),

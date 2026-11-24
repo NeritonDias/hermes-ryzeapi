@@ -47,7 +47,8 @@
 .ryze-title-actions { gap: .65rem; }
 .ryze-title-actions > div { display: flex; align-items: center; gap: .6rem; min-width: 0; }
 .ryze-title-actions label, .ryze-field label, .ryze-page label[for] { font-size: .89rem; font-weight: 550; }
-.ryze-title-actions select { width: auto; max-width: 18rem; }
+.ryze-title-actions label { flex: 0 0 auto; white-space: nowrap; }
+.ryze-page .ryze-title-actions select { width: auto; min-width: 10.5rem; max-width: 18rem; }
 .ryze-main { min-width: 0; }
 .ryze-actions, .ryze-dirty { flex-wrap: wrap; gap: .65rem 1rem; margin: .9rem 0; }
 .ryze-dirty { color: var(--ryze-muted); font-size: .875rem; }
@@ -154,7 +155,7 @@
   .ryze-title-row { align-items: stretch; flex-direction: column; gap: .6rem; padding: 1.1rem 0; }
   .ryze-title-actions { align-items: flex-end; }
   .ryze-title-actions > div { display: grid; flex: 1; gap: .2rem; }
-  .ryze-title-actions select { width: 100%; max-width: none; }
+  .ryze-page .ryze-title-actions select { width: 100%; min-width: 0; max-width: none; }
   .ryze-overview-columns, .ryze-onboarding, .ryze-timing-list { grid-template-columns: minmax(0,1fr); }
   .ryze-overview-columns { gap: 1.2rem; margin-block: 1.25rem; }
   .ryze-config-summary { border: 0; border-top: 1px solid var(--ryze-rule); padding: 1.1rem 0 0; }
