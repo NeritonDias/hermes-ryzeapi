@@ -5,6 +5,9 @@ from contextlib import asynccontextmanager
 from urllib.parse import quote
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from starlette.background import BackgroundTask
+from starlette.responses import JSONResponse
+from .deployment import supervised_gateway, request_gateway_reload
 from . import settings
 from .core import allowed_numbers, phone, authorized_phone
 from .client import RyzeClient, RyzeError
@@ -56,7 +59,8 @@ async def protect(request: Request, response: Response):
                 or deployment['owner_issuer'] != getattr(session, 'issuer', None)):
             raise HTTPException(403, 'Conta OIDC sem permissão para administrar o RyzeAPI.')
     if request.method != 'GET':
-        if request.headers.get('origin') != deployment['public_origin']:
+        origin = request.headers.get('origin')
+        if origin != deployment['public_origin'] and not (session and origin and origin == infrastructure.webapp_origin()):
             raise HTTPException(403, 'Abra esta configuração pelo painel Hermes autenticado.')
         if request.headers.get('content-type', '').split(';')[0] != 'application/json':
             raise HTTPException(415, 'Envie os dados em JSON.')
@@ -179,7 +183,7 @@ async def restart():
     managed = deployment['lifecycle'] == 'coolify' or (
         deployment['lifecycle'] == 'auto' and not shutil.which('systemctl'))
     if managed:
-        # Coolify owns this process. The durable configuration is picked up at redeploy.
+        # The route schedules a verified s6 reload after the response, or reports a required redeploy.
         return False
     env = dict(os.environ, XDG_RUNTIME_DIR=f'/run/user/{os.getuid()}',
                DBUS_SESSION_BUS_ADDRESS=f'unix:path=/run/user/{os.getuid()}/bus')
@@ -423,14 +427,53 @@ async def setup_webhook(request: Request):
         value = settings.load()
         editable(value)
         d = infrastructure.load()
-        if not d['public_origin'].startswith('https://'):
-            raise HTTPException(409, 'Configure primeiro a origem HTTPS do Webapp na implantação.')
-        if not d['webhook_url']:
-            d['webhook_url'] = d['public_origin'].rstrip('/') + '/ryzeapi/events'
-            if d['lifecycle'] == 'coolify':
-                d['listener_host'] = '0.0.0.0'
+        origin = infrastructure.webapp_origin() or d['public_origin']
+        if 'label' in data:
+            label = data['label']
+            if not isinstance(label, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,50}', label):
+                raise HTTPException(400, 'Use de 1 a 50 letras, números, traços ou sublinhados no identificador.')
+            d['webhook_label'] = label
+        if not d['webhook_url'] or data.get('use_webapp_url') is True:
+            if not origin.startswith('https://'):
+                raise HTTPException(409, 'Configure webapp.public_url com o endereço HTTPS do seu Hermes.')
+            d['webhook_url'] = origin + '/ryzeapi/events'
+        if d['lifecycle'] == 'coolify':
+            d['listener_host'] = '0.0.0.0'
+        try:
             infrastructure.save(d)
-        return {'webhook_url': d['webhook_url']}
+        except ValueError:
+            raise HTTPException(400, 'Confira o identificador e o endereço HTTPS do webhook.') from None
+        return {'webhook_url': d['webhook_url'], 'label': d['webhook_label']}
+
+
+@router.get('/webhook/config')
+async def webhook_config():
+    value = settings.load()
+    deployment = infrastructure.load()
+    origin = infrastructure.webapp_origin() or deployment['public_origin']
+    active = bool(value.get('enabled'))
+    pending = bool(value.get('hook_pending'))
+    report = dict(instance=value.get('instance', ''), webhook_url=deployment['webhook_url'],
+                  suggested_url=origin+'/ryzeapi/events' if origin.startswith('https://') else '',
+                  label=deployment['webhook_label'], enabled=active, hook_pending=pending,
+                  registered=None, events=list(EVENTS), websocket_enabled=None, websocket_connected=None,
+                  running=False, last_event_at=None,
+                  editable=not (active or pending or value.get('webhook_configured')))
+    if not report['instance'] or not value.get('instance_token'):
+        return report
+    name, token = selected(value)
+    hooks, ws, health = await asyncio.gather(
+        read_hooks(value), upstream(token, 'GET', f'/api/events/getWebsocket/{name}'),
+        read_health(value), return_exceptions=True)
+    if isinstance(hooks, list):
+        local = dict(value, hook_label=deployment['webhook_label'], hook_url=deployment['webhook_url'])
+        report['registered'] = confirmed(local, hooks)
+    if isinstance(ws, dict) and isinstance(ws.get('websocket'), dict):
+        report['websocket_enabled'] = ws['websocket'].get('enabled')
+    if isinstance(health, dict) and health:
+        report.update(running=health.get('running') is True, websocket_connected=health.get('websocket_connected'),
+                      last_event_at=health.get('last_event_at'))
+    return report
 
 
 @router.get('/activation-status')
@@ -500,9 +543,18 @@ async def apply_settings(value):
     raise HTTPException(503, 'O gateway não confirmou a configuração do canal.')
 
 
+def apply_after_response(result):
+    if result.get('redeploy_required') and infrastructure.load()['lifecycle'] == 'coolify':
+        service = supervised_gateway()
+        if service is not None:
+            result = dict(result, redeploy_required=False, restart_scheduled=True)
+            return JSONResponse(result, background=BackgroundTask(request_gateway_reload, service))
+    return result
+
+
 @router.post('/activate')
 async def activate(request: Request):
-    return await activate_channel(await body(request))
+    return apply_after_response(await activate_channel(await body(request)))
 
 
 async def activate_channel(data):
@@ -574,8 +626,8 @@ async def firewall(request: Request):
                 settings.save(value)
                 await disable_hook(value)
                 raise
-    return {'saved': True, 'enabled': bool(value.get('enabled')),
-            'redeploy_required': bool(value.get('enabled') and not running), **permissions}
+    return apply_after_response({'saved': True, 'enabled': bool(value.get('enabled')),
+            'redeploy_required': bool(value.get('enabled') and not running), **permissions})
 
 
 @router.post('/pause')
@@ -583,11 +635,13 @@ async def pause(request: Request):
     await body(request)
     async with mutation():
         value = settings.load()
+        was_enabled = bool(value.get('enabled'))
         value['enabled'] = False
         settings.save(value)
         await disable_hook(value)
-        await restart()
-    return {'enabled': False, 'webhook_configured': False}
+        restarted = await restart()
+    return apply_after_response({'enabled': False, 'webhook_configured': False,
+                                 'redeploy_required': was_enabled and restarted is False})
 
 
 @router.post('/forget')

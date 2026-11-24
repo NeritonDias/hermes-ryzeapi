@@ -2,6 +2,8 @@
 
 ## 0.14.2
 
+The new Webhooks page uses the public URL of the installed Hermes profile. It shows remote registration and both ends of the WebSocket connection, lets the owner edit the paused receiver, and copies its callback address. On the official Coolify/s6 image, the gateway can gracefully apply changes after returning the management response.
+
 The Webapp reports activation blockers for the selected instance. The receiver subscribes to all six RyzeAPI event families via webhook and WebSocket. Call and label notifications are observed without triggering replies. WebSocket provisioning handles a new instance with no saved settings, reordered subscriptions and an existing all-events subscription. The plugin manages its own label and endpoint. Other destinations retain their own subscriptions.
 
 ## 0.14.1

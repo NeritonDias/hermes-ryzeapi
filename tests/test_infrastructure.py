@@ -19,3 +19,13 @@ class DeploymentTests(unittest.TestCase):
                       {'webhook_url':'https://example.com/wrong'},{'listener_port':True},{'listener_port':80},
                       {'gateway_service':'x;curl evil'},{'unknown':1}):
             with self.subTest(value=value),self.assertRaises(ValueError):validate(value)
+
+    def test_webhook_origin_follows_current_hermes_installation(self):
+        from types import SimpleNamespace
+        from ryzeapi.infrastructure import webapp_origin
+        for domain in ('alpha.example.com','beta.example.org:8443'):
+            with self.subTest(domain=domain), patch('gateway.webapp_listener.webapp_settings',
+                    return_value=SimpleNamespace(public_url=f'https://{domain}/')) as native:
+                self.assertEqual(webapp_origin(),f'https://{domain}')
+                native.assert_called_once()
+                self.assertEqual(validate(dict(public_origin=webapp_origin(),webhook_url=f'https://{domain}/ryzeapi/events'))['webhook_url'],f'https://{domain}/ryzeapi/events')

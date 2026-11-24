@@ -1,5 +1,13 @@
 # Release validation
 
+## 0.14.2
+
+The official Hermes v0.23.4 Linux ARM64 image passed 234 backend tests. Chromium exercised all five views on an isolated Oracle instance at 390, 820 and 1440 pixels, including a 580-pixel Hermes content pane. The Webhooks editor rejected an invalid label, saved a valid label through the actual plugin API, and restored the saved value after reload. These browser fixtures used synthetic provider responses. Two separate Webapp configurations produced their own callback URLs, including one with an explicit HTTPS port.
+
+A separate production check observed one authorized message on both transports, one admission to the gateway, and one accepted outbound text. Tenant-specific screenshots and production data are retained privately.
+
+[Webhooks editor with synthetic data](screens/webhooks-1440.png)
+
 ## 0.14.1 — 2026-11-24
 
 All 228 backend tests passed on Linux ARM64 with the official Hermes v0.23.4 image. Chromium exercised the generated Webapp extension against the plugin REST API in an isolated profile using synthetic provider data. A receive-only contact and a listen-only group survived a full page reload. The channel stayed paused.

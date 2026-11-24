@@ -32,11 +32,13 @@ export default {
   register(ctx) {
     const api = (path, data) => ctx.rest(path, data === undefined ? {} : {method: 'POST', body: {...data, _ryze_ui: true}, timeoutMs: 90000});
     const App = createRyzePanel(React, { Button, Input: 'input', Label: 'label' }, api);
-    ctx.register({
-      id: 'whatsapp', area: ROUTES_AREA, data: {path: '/ryzeapi'},
-      render: () => h('div', {className: 'ryze-desktop ryze-surface'},
-        h('style', null, STYLE), h(App))
-    });
+    for (const [id, path, webhooksPage] of [['whatsapp', '/ryzeapi', false], ['webhooks', '/ryzeapi/webhooks', true]]) {
+      ctx.register({
+        id, area: ROUTES_AREA, data: {path},
+        render: () => h('div', {className: 'ryze-desktop ryze-surface'},
+          h('style', null, STYLE), h(App, {webapp: true, webhooksPage}))
+      });
+    }
     ctx.register({id: 'nav', area: SIDEBAR_NAV_AREA,
       data: {path: '/ryzeapi', label: 'RyzeAPI', codicon: 'comment-discussion'}});
 

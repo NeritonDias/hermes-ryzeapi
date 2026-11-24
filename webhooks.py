@@ -16,7 +16,10 @@ def separate_destination(hook, label, url):
     def target(address):
         endpoint = urlsplit(address)
         return (endpoint.scheme.lower(), endpoint.hostname, endpoint.port or 443, endpoint.path.rstrip('/'))
-    return bool(url and hook.get('url') and hook.get('label') != label and target(hook['url']) != target(url))
+    try:
+        return bool(url and hook.get('url') and hook.get('label') != label and target(hook['url']) != target(url))
+    except (TypeError, ValueError):
+        return False
 
 
 def confirmed(value, hooks):

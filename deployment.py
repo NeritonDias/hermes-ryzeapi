@@ -57,3 +57,38 @@ def safe_to_stop(health):
             and activity.get('known') is True
             and all(zero(health.get(key)) for key in required)
             and all(zero(activity.get(key)) for key in native))
+
+
+def supervised_gateway():
+    """Locate only this profile's gateway under the official Hermes s6 supervisor."""
+    import os
+    import signal
+    from pathlib import Path
+    if not Path('/command/s6-svc').is_file():
+        return None
+    try:
+        from gateway.status import get_running_pid_identity_strict
+        from hermes_cli.service_manager import S6ServiceManager
+        from hermes_constants import get_hermes_home
+        identity = get_running_pid_identity_strict(get_hermes_home() / 'gateway.pid')
+        if not identity:
+            return None
+        process = Path('/proc') / str(identity[0])
+        fields = dict(line.split(':', 1) for line in (process/'status').read_text().splitlines() if ':' in line)
+        parent = Path('/proc') / fields['PPid'].strip()
+        service = (parent/'cwd').resolve(strict=True)
+        handles_restart = int(fields['SigCgt'], 16) & (1 << (signal.SIGUSR1 - 1))
+        if ((parent/'comm').read_text().strip() == 's6-supervise' and handles_restart
+                and service.parent == S6ServiceManager().scandir.resolve()
+                and service.name.startswith('gateway-') and os.access(service/'supervise/control', os.W_OK)):
+            return service
+    except (OSError, KeyError, ValueError, ImportError):
+        pass
+    return None
+
+
+def request_gateway_reload(service):
+    """SIGUSR1 asks Hermes to drain its work and lets s6 respawn just this gateway."""
+    import subprocess
+    if service is not None and supervised_gateway() == service:
+        subprocess.run(['/command/s6-svc', '-1', str(service)], check=True, timeout=5)

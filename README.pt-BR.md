@@ -32,6 +32,8 @@ Você pode usar este plugin **no lugar do canal WhatsApp nativo baseado em Baile
 
 No **Webapp do Hermes v0.23.4**, entre com a conta do proprietário e abra **Capabilities → Plugins** no perfil do gateway. Para uma instalação nova, use **Install from Git** com o repositório `NeritonDias/hermes-ryzeapi`. Se o pacote já estiver instalado, abra **RyzeAPI** nessa lista. Habilite **Agent** para carregar as ferramentas e **Desktop** para mostrar **RyzeAPI** no menu lateral. A escolha de Desktop fica salva neste navegador.
 
+No Webapp, a aba **Webhooks** e o atalho **Gerenciar webhooks** em Configurações abrem `{{domain}}/#/ryzeapi/webhooks`. O instalador lê `webapp.public_url` do perfil Hermes para montar o callback HTTPS `{{domain}}/ryzeapi/events`. Configure o proxy para entregar esse POST ao receptor interno.
+
 Para instalar a **v0.14.2** pelo terminal, execute o comando no perfil que o gateway usa. O SHA fixa a versão revisada. Na imagem oficial, o perfil padrão fica em `/opt/data`.
 
 ```bash

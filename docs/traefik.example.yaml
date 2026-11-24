@@ -1,9 +1,9 @@
-# Replace both example hostnames before applying to the proxy's dynamic configuration.
+# Replace the Webapp and gateway hostnames before applying to the proxy's dynamic configuration.
 http:
   routers:
     ryzeapi-events:
       entryPoints: [websecure]
-      rule: "Host(`hooks.example.com`) && Path(`/ryzeapi/events`) && Method(`POST`)"
+      rule: "Host(`hermes.example.com`) && Path(`/ryzeapi/events`) && Method(`POST`)"
       service: ryzeapi-events
       tls: {}
   services:

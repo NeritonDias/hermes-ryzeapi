@@ -72,6 +72,21 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(infrastructure.load()['listener_host'],'0.0.0.0')
         self.assertFalse(self.calls)
 
+    async def test_webhook_editor_uses_installation_domain_and_keeps_registered_secrets_private(self):
+        import json
+        class OwnerRequest:
+            async def body(self): return b'{}'
+            async def json(self): return {'label':'support-hermes','use_webapp_url':True,'confirm':True}
+        d=infrastructure.load()
+        with patch.object(infrastructure, 'webapp_origin', return_value='https://tenant.example.org'):
+            await m.setup_webhook(OwnerRequest())
+            report=await m.webhook_config()
+        self.assertEqual(report['webhook_url'],'https://tenant.example.org/ryzeapi/events')
+        self.assertEqual(report['label'],'support-hermes')
+        self.assertTrue(report['editable'])
+        self.assertNotIn('webhook_secret', report)
+        self.assertNotIn('authorization', json.dumps(report))
+
     async def test_foreign_webhook_receives_no_writes(self):
         self.hook = {'label': infrastructure.load()['webhook_label'], 'enabled': True, 'url': 'https://other.example.com', 'authorization': 'different'}
         response = await self.activate()
@@ -104,6 +119,18 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue((await self.client.get('/state')).json()['runtime_running'])
         self.assertEqual((await self.client.post('/pause', json={})).status_code, 200)
         self.assertIs(self.hook['enabled'], False)
+
+    async def test_supervised_gateway_reload_runs_after_response(self):
+        config = infrastructure.validate({'lifecycle':'coolify'})
+        service = Path('/run/hermes-service/gateway-default')
+        with patch.object(infrastructure, 'load', return_value=config), patch.object(
+                m, 'supervised_gateway', return_value=service), patch.object(m, 'request_gateway_reload') as reload_gateway:
+            response = m.apply_after_response({'enabled':True, 'redeploy_required':True})
+            self.assertIn(b'"restart_scheduled":true', response.body)
+            reload_gateway.assert_not_called()
+            await response.background()
+            reload_gateway.assert_called_once_with(service)
+            self.assertEqual(m.apply_after_response({'redeploy_required':False}), {'redeploy_required':False})
 
     async def test_oauth_owner_checked_on_server(self):
         config = infrastructure.validate({'owner_subject':'owner', 'owner_issuer':'https://issuer.example'})

@@ -32,6 +32,8 @@ You can use this plugin **instead of Hermes' built-in Baileys-based WhatsApp cha
 
 In the **Hermes v0.23.4 Webapp**, sign in as the owner and open **Capabilities → Plugins** in the gateway profile. For a new installation, use **Install from Git** with `NeritonDias/hermes-ryzeapi`. If the package is already installed, open **RyzeAPI** in that list. Enable **Agent** to load the tools and **Desktop** to show **RyzeAPI** in the sidebar. The Desktop choice is saved in this browser.
 
+The **Webhooks** tab and the **Gerenciar webhooks** link in settings open `{{domain}}/#/ryzeapi/webhooks`. The plugin reads the active Hermes profile’s `webapp.public_url` to construct its HTTPS callback at `{{domain}}/ryzeapi/events`. Configure the proxy to forward this POST to the internal receiver.
+
 To install **v0.14.2** from the terminal, run the command in the profile used by the gateway. The SHA pins the reviewed release. The default profile in the official image is `/opt/data`.
 
 ```bash

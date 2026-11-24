@@ -95,12 +95,12 @@ def validate(value,schema,path='payload'):
     elif kind in ('integer','number'):
         if not schema.get('minimum',-math.inf)<=value<=schema.get('maximum',math.inf):raise ValueError(f'{path}: out of range')
 
-def public_url(value):
+def public_url(value, *, https_port=443):
     """Static gate; remote fetches are performed by RyzeAPI, not this plugin."""
     try:
         parsed=urlsplit(value)
         host=(parsed.hostname or '').lower().rstrip('.')
-        if parsed.scheme!='https' or not host or parsed.username or parsed.password or parsed.port not in (None,443):raise ValueError()
+        if parsed.scheme!='https' or not host or parsed.username or parsed.password or (parsed.port or 443) != https_port or parsed.port == 0:raise ValueError()
         if any(c.isspace() for c in value) or '\\' in value:raise ValueError()
         if host in ('localhost','metadata.google.internal') or '.' not in host or host.endswith(('.local','.internal','.localhost')):raise ValueError()
         try:
