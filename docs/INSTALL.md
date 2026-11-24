@@ -11,24 +11,23 @@
 - Your own RyzeAPI account, available instance quota and an authorized WhatsApp account to pair.
 - An authenticated dashboard and a public HTTPS webhook. You provide domains, edge routing, certificates and authentication.
 
-Tested Hermes baseline: `8fc0374447313e276f6b9a2764bfc750190c966a`. This plugin does not install models, provide hosting or use the author's account.
+Validated environment for v0.14.0: official Hermes v0.23.4 image on Linux ARM64. This plugin does not install models, provide hosting or use the author's account.
 
 ## Install
 
 Review code and permissions first: a Python plugin runs with the Hermes process's access.
 
 ```bash
-hermes plugins install NeritonDias/hermes-ryzeapi --no-enable
+hermes plugins install NeritonDias/hermes-ryzeapi --ref 32f05862a82904f5b2c42d8a668165152c7e9f20 --no-deps --no-enable
 hermes plugins list
 ```
 
-The installed directory is `plugins/ryzeapi` in your active profile, usually `~/.hermes/plugins/ryzeapi`, regardless of the repository name. Replace `/path/to/profile` below with that profile. The official Hermes v0.23.4 image supplies the supported dependencies. For custom environments, use the Hermes interpreter:
+Replace `/path/to/profile` with the active profile directory. In the official v0.23.4 image, the default is `/opt/data` and Hermes resolves dependencies on enable. The `pip` line below applies only to custom environments that manage dependencies manually. Run it with the Hermes interpreter.
 
 ```bash
-# Custom Python environments only
-python -m pip install -r /path/to/profile/plugins/ryzeapi/requirements.txt
+# Only for manually managed dependencies in a custom environment
+# python -m pip install -r /path/to/profile/plugins/ryzeapi/requirements.txt
 hermes plugins doctor /path/to/profile/plugins/ryzeapi --ci
-hermes plugins compat /path/to/profile/plugins/ryzeapi
 hermes plugins enable ryzeapi
 ```
 
@@ -40,7 +39,7 @@ On the first load of the enabled plugin, `ryzeapi` and `ryzeapi-painel` are inst
 
 ## Hermes Webapp and Coolify
 
-In **Capabilities → Plugins → Install from Git**, select the gateway profile and pin the reviewed commit. Enable Agent and Desktop. Open **RyzeAPI** in the left sidebar. Both interfaces share the same account, pairing, permissions, metrics and instance screens.
+In the **Hermes v0.23.4 Webapp**, sign in as the owner and open **Capabilities → Plugins** in the gateway profile. For a new installation, use **Install from Git** with `NeritonDias/hermes-ryzeapi`. If the package is already installed, open **RyzeAPI** in that list. Enable **Agent** to load the tools and **Desktop** to show **RyzeAPI** in the sidebar. The Desktop choice is saved in this browser.
 
 Use the deployment command below with `--lifecycle coolify --listener-host 0.0.0.0 --owner-subject "$OIDC_SUB" --owner-issuer "$OIDC_ISS"` inside the gateway container. Use the authenticated owner's exact Hermes user ID and verified OIDC issuer. The management API refuses other identities. Keep port 9131 internal to the private proxy network, without a published host port. A single Traefik rule must match the dedicated webhook host, exact path `/ryzeapi/events` and method POST, targeting this gateway on port 9131. The Webapp stays on internal port 9120. See the [route template](traefik.example.yaml). Run the deployment script again to migrate a saved 9120 listener.
 
@@ -143,10 +142,9 @@ Native update:
 
 ```bash
 hermes plugins update ryzeapi
-# Custom Python environments only
-python -m pip install -r /path/to/profile/plugins/ryzeapi/requirements.txt
+# Only for manually managed dependencies in a custom environment
+# python -m pip install -r /path/to/profile/plugins/ryzeapi/requirements.txt
 hermes plugins doctor /path/to/profile/plugins/ryzeapi --ci
-hermes plugins compat /path/to/profile/plugins/ryzeapi
 ```
 
 Restart processes that load the plugin during an idle window and inspect both skills in a new session. These commands follow your installed source; they are not a guarantee of a pinned release. For an immutable installation, the installer accepts `--ref` with a full 40-character commit SHA. Use the commit associated with the release, not a tag name in place of that SHA.

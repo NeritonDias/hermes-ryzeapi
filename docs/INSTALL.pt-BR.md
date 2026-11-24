@@ -11,24 +11,23 @@
 - Conta RyzeAPI, cota disponível e WhatsApp autorizado para pareamento.
 - Dashboard autenticado e webhook público HTTPS. Domínios, portas de borda, certificados e autenticação são responsabilidade da sua infraestrutura.
 
-Base testada: Hermes commit 8fc0374447313e276f6b9a2764bfc750190c966a. Este plugin não instala modelos, não fornece hospedagem e não usa uma conta do autor.
+Ambiente validado para a v0.14.0: imagem oficial Hermes v0.23.4 em Linux ARM64. Este plugin não instala modelos, não fornece hospedagem e não usa uma conta do autor.
 
 ## Instalar
 
 Revise o código e permissões: um plugin Python roda com acesso do processo Hermes.
 
 ```bash
-hermes plugins install NeritonDias/hermes-ryzeapi --no-enable
+hermes plugins install NeritonDias/hermes-ryzeapi --ref 32f05862a82904f5b2c42d8a668165152c7e9f20 --no-deps --no-enable
 hermes plugins list
 ```
 
-O diretório instalado é plugins/ryzeapi no perfil ativo (normalmente ~/.hermes/plugins/ryzeapi), independentemente do nome do repositório. Use esse diretório nos exemplos abaixo. A imagem oficial v0.23.4 já fornece as dependências. Em ambientes personalizados, use o Python do Hermes:
+Substitua `/caminho/do/perfil` pelo diretório do perfil ativo. Na imagem oficial v0.23.4, o padrão é `/opt/data` e o Hermes resolve as dependências ao habilitar o plugin. A linha de `pip` abaixo se aplica apenas a ambientes personalizados que gerenciam as dependências manualmente. Execute-a com o Python do Hermes.
 
 ```bash
-# Custom Python environments only
-python -m pip install -r /caminho/do/perfil/plugins/ryzeapi/requirements.txt
+# Somente para dependências gerenciadas manualmente em ambiente personalizado
+# python -m pip install -r /caminho/do/perfil/plugins/ryzeapi/requirements.txt
 hermes plugins doctor /caminho/do/perfil/plugins/ryzeapi --ci
-hermes plugins compat /caminho/do/perfil/plugins/ryzeapi
 hermes plugins enable ryzeapi
 ```
 
@@ -40,7 +39,7 @@ Na primeira carga do plugin habilitado, ryzeapi e ryzeapi-painel são copiadas d
 
 ## Webapp Hermes e Coolify
 
-Em **Capabilities → Plugins → Install from Git**, escolha o perfil do gateway e fixe o commit revisado. Habilite Agent e Desktop. Abra **RyzeAPI** no menu lateral esquerdo. O Webapp e o Dashboard compartilham as telas de conta, pareamento, permissões, métricas e instâncias.
+No **Webapp do Hermes v0.23.4**, entre com a conta do proprietário e abra **Capabilities → Plugins** no perfil do gateway. Para uma instalação nova, use **Install from Git** com o repositório `NeritonDias/hermes-ryzeapi`. Se o pacote já estiver instalado, abra **RyzeAPI** nessa lista. Habilite **Agent** para carregar as ferramentas e **Desktop** para mostrar **RyzeAPI** no menu lateral. A escolha de Desktop fica salva neste navegador.
 
 Execute o comando de configuração abaixo no contêiner com `--lifecycle coolify --listener-host 0.0.0.0 --owner-subject "$OIDC_SUB" --owner-issuer "$OIDC_ISS"`. Use o ID exato do proprietário identificado pelo Hermes e o emissor OIDC verificado. A API administrativa recusa outras identidades. A porta 9131 fica na rede privada do proxy, sem publicação no host. Configure uma única rota Traefik para o hostname dedicado, caminho exato `/ryzeapi/events` e método POST, apontando para este gateway na porta 9131. O Webapp continua na porta interna 9120. Consulte o [modelo da rota](traefik.example.yaml). Para migrar uma configuração existente que usa 9120, execute novamente o configurador.
 
@@ -138,10 +137,9 @@ Atualizações nativas:
 
 ```bash
 hermes plugins update ryzeapi
-# Custom Python environments only
-python -m pip install -r /caminho/do/perfil/plugins/ryzeapi/requirements.txt
+# Somente para dependências gerenciadas manualmente em ambiente personalizado
+# python -m pip install -r /caminho/do/perfil/plugins/ryzeapi/requirements.txt
 hermes plugins doctor /caminho/do/perfil/plugins/ryzeapi --ci
-hermes plugins compat /caminho/do/perfil/plugins/ryzeapi
 ```
 
 Reinicie os processos que carregam o plugin em janela ociosa; confira as skills em sessão nova. Para instalar por revisão imutável, o instalador aceita --ref com SHA completo de 40 caracteres; use o SHA associado à release, não uma tag como se fosse SHA.

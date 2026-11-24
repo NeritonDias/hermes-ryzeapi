@@ -1,7 +1,7 @@
 # Hermes × RyzeAPI
 
 [![English](https://img.shields.io/badge/Language-English-196b62)](README.md) [![Português (Brasil)](https://img.shields.io/badge/Idioma-PT--BR-196b62)](README.pt-BR.md)
-[![Release](https://img.shields.io/github/v/release/NeritonDias/hermes-ryzeapi?include_prereleases)](https://github.com/NeritonDias/hermes-ryzeapi/releases)
+[![Release](https://img.shields.io/github/v/release/NeritonDias/hermes-ryzeapi)](https://github.com/NeritonDias/hermes-ryzeapi/releases)
 [![Tests](https://github.com/NeritonDias/hermes-ryzeapi/actions/workflows/test.yml/badge.svg)](https://github.com/NeritonDias/hermes-ryzeapi/actions/workflows/test.yml)
 
 Plugin comunitário de WhatsApp para **Hermes Agent**, com painel web, duas skills integradas, WebSocket permanente e webhook de contingência.
@@ -30,24 +30,19 @@ Você pode usar este plugin **no lugar do canal WhatsApp nativo baseado em Baile
 
 ## Instalação
 
-**Webapp v0.23.4:** em Capabilities → Plugins → Install from Git, habilite Agent e Desktop para abrir o painel RyzeAPI.
+No **Webapp do Hermes v0.23.4**, entre com a conta do proprietário e abra **Capabilities → Plugins** no perfil do gateway. Para uma instalação nova, use **Install from Git** com o repositório `NeritonDias/hermes-ryzeapi`. Se o pacote já estiver instalado, abra **RyzeAPI** nessa lista. Habilite **Agent** para carregar as ferramentas e **Desktop** para mostrar **RyzeAPI** no menu lateral. A escolha de Desktop fica salva neste navegador.
 
-Suporte inicial: **Linux com Coolify/s6 ou systemd de usuário**, Python 3.12+ no ambiente do Hermes, gateway e dashboard executados pelo mesmo usuário/perfil. Não depende de Oracle ou Cloudflare. A autenticação do dashboard é responsabilidade do Hermes/proxy; nunca exponha o painel sem autenticação.
+Para instalar a **v0.14.0** pelo terminal, execute o comando no perfil que o gateway usa. O SHA fixa a versão revisada. Na imagem oficial, o perfil padrão fica em `/opt/data`.
 
 ```bash
-hermes plugins install NeritonDias/hermes-ryzeapi --no-enable
-hermes plugins list
-# Custom Python environments only
-python -m pip install -r /caminho/do/perfil/plugins/ryzeapi/requirements.txt
-hermes plugins doctor /caminho/do/perfil/plugins/ryzeapi --ci
+hermes plugins install NeritonDias/hermes-ryzeapi --ref 32f05862a82904f5b2c42d8a668165152c7e9f20 --no-deps --no-enable
+hermes plugins doctor "${HERMES_HOME:-$HOME/.hermes}/plugins/ryzeapi" --ci
 hermes plugins enable ryzeapi
 ```
 
-Substitua `/caminho/do/perfil` pelo perfil ativo e use o Python do ambiente Hermes. A imagem oficial v0.23.4 já inclui as dependências compatíveis.
+Na imagem oficial v0.23.4, o Hermes resolve as dependências declaradas quando você habilita o Agent. Depois, habilite **Desktop** no navegador para abrir o painel.
 
-Antes de ativar o WhatsApp, siga **[o guia completo](docs/INSTALL.pt-BR.md)** para configurar seu domínio, webhook e serviço. O plugin começa fechado, sem destinatários liberados. Revisar código antes de habilitar: plugins executam com as permissões do processo Hermes. Instalação por GitHub não significa revisão pelo catálogo oficial.
-
-Para fixar uma versão, use `--ref` com o SHA completo da release. Para atualização, prefira versões revisadas; consulte [atualização e remoção](docs/INSTALL.pt-BR.md#atualização-e-remoção).
+O canal WhatsApp começa pausado. Para conectá-lo, configure o proprietário OIDC, a rota HTTPS do webhook, sua conta RyzeAPI e as permissões de contatos e grupos. O guia cobre Linux com Coolify/s6 ou systemd de usuário. [Guia de instalação](docs/INSTALL.pt-BR.md)
 
 ## Versões e releases
 
@@ -95,7 +90,7 @@ Exemplo sintético para `ryzeapi_send_buttons`. Retire dry_run apenas com destin
 - PIX apresenta chave para copiar; não executa pagamento, cobrança nem confirma recebimento. Status exige autorização explícita da audiência/conteúdo.
 - Não há garantia de processamento/entrega exatamente uma vez. Operações incertas não são repetidas automaticamente; consulte os registros.
 - Correlações de menus expiram em 7 dias. COPY/URL/CALL não produzem necessariamente uma mensagem de resposta.
-- Versão testada com o commit Hermes `8fc0374447313e276f6b9a2764bfc750190c966a`. Compatibilidade com outras versões/SOs precisa ser testada; não declaramos compatibilidade universal.
+- A v0.14.0 foi validada na imagem oficial do Hermes v0.23.4 em Linux ARM64. [Resultados da validação](docs/VALIDATION.md)
 
 ## Desenvolvimento e suporte
 

@@ -1,7 +1,7 @@
 # Hermes × RyzeAPI
 
 [![English](https://img.shields.io/badge/Language-English-196b62)](README.md) [![Português (Brasil)](https://img.shields.io/badge/Idioma-PT--BR-196b62)](README.pt-BR.md)
-[![Release](https://img.shields.io/github/v/release/NeritonDias/hermes-ryzeapi?include_prereleases)](https://github.com/NeritonDias/hermes-ryzeapi/releases)
+[![Release](https://img.shields.io/github/v/release/NeritonDias/hermes-ryzeapi)](https://github.com/NeritonDias/hermes-ryzeapi/releases)
 [![Tests](https://github.com/NeritonDias/hermes-ryzeapi/actions/workflows/test.yml/badge.svg)](https://github.com/NeritonDias/hermes-ryzeapi/actions/workflows/test.yml)
 
 A community WhatsApp integration for **Hermes Agent** with a web dashboard, two bundled skills, persistent WebSocket connectivity and webhook fallback.
@@ -30,24 +30,19 @@ You can use this plugin **instead of Hermes' built-in Baileys-based WhatsApp cha
 
 ## Installation
 
-**Webapp v0.23.4:** Capabilities → Plugins → Install from Git. Enable Agent and Desktop to open the RyzeAPI panel.
+In the **Hermes v0.23.4 Webapp**, sign in as the owner and open **Capabilities → Plugins** in the gateway profile. For a new installation, use **Install from Git** with `NeritonDias/hermes-ryzeapi`. If the package is already installed, open **RyzeAPI** in that list. Enable **Agent** to load the tools and **Desktop** to show **RyzeAPI** in the sidebar. The Desktop choice is saved in this browser.
 
-Initial support: **Linux with Coolify/s6 or user-level systemd**, Python 3.12+ in the Hermes environment, and gateway/dashboard running under the same user and Hermes profile. Oracle and Cloudflare are not required. Dashboard authentication must be provided by Hermes or your proxy; never expose it without authentication.
-
-Use the Python interpreter from your Hermes environment and replace `/path/to/profile` with your active profile:
+To install **v0.14.0** from the terminal, run the command in the profile used by the gateway. The SHA pins the reviewed release. The default profile in the official image is `/opt/data`.
 
 ```bash
-hermes plugins install NeritonDias/hermes-ryzeapi --no-enable
-hermes plugins list
-# Custom Python environments only
-python -m pip install -r /path/to/profile/plugins/ryzeapi/requirements.txt
-hermes plugins doctor /path/to/profile/plugins/ryzeapi --ci
+hermes plugins install NeritonDias/hermes-ryzeapi --ref 32f05862a82904f5b2c42d8a668165152c7e9f20 --no-deps --no-enable
+hermes plugins doctor "${HERMES_HOME:-$HOME/.hermes}/plugins/ryzeapi" --ci
 hermes plugins enable ryzeapi
 ```
 
-The tested native installer does **not** install Python dependencies automatically. Follow the **[complete installation guide](docs/INSTALL.md)** before enabling WhatsApp: configure authentication, HTTPS webhook routing, credentials and the firewall. No recipients are allowed by default.
+In the official v0.23.4 image, Hermes resolves the declared dependencies when you enable the agent plugin. Then enable **Desktop** in the browser to open the panel.
 
-Review code and scanner findings before enabling a plugin: it runs with the Hermes process permissions. Installing from GitHub does not mean it has been approved by the official catalog. For an immutable install, use `--ref` with the release's full commit SHA; see [updates and removal](docs/INSTALL.md#updates-and-removal).
+The WhatsApp channel starts paused. To connect it, configure the OIDC owner, HTTPS webhook route, RyzeAPI account and contact and group permissions. The guide covers Linux with Coolify/s6 or user-level systemd. [Installation guide](docs/INSTALL.md)
 
 ## Two skills installed automatically
 
@@ -95,7 +90,7 @@ Remove `dry_run` only for an authorized destination and content. An `accepted` r
 - **PIX:** displays a key for copying; does not perform payments, create charges or verify receipt. Status requires specific authorization for content and audience.
 - **Delivery:** no exactly-once guarantee. Uncertain operations are not automatically retried; inspect their records first.
 - **Menus:** correlation expires after seven days. COPY/URL/CALL actions do not necessarily generate reply messages.
-- **Compatibility:** tested against Hermes commit `8fc0374447313e276f6b9a2764bfc750190c966a`. Other versions and operating systems need testing.
+- Release v0.14.0 was validated on Linux ARM64 with the official Hermes v0.23.4 image. [Validation results](docs/VALIDATION.md)
 
 ## Versions and releases
 
