@@ -140,13 +140,14 @@ def selected(value):
         raise HTTPException(409, 'Selecione uma instância primeiro.')
     return valid_name(value['instance']), credential(value['instance_token'])
 
-def firewall_fields(data):
+def firewall_fields(data, *, paused=False):
     raw = text(data, 'allowed_users', 300)
     outbound = text(data, 'allowed_recipients', 1000) if 'allowed_recipients' in data else raw
     try:
-        numbers, recipients = allowed_numbers(raw), allowed_numbers(outbound)
+        numbers = set() if paused and not raw else allowed_numbers(raw)
+        recipients = set() if paused and not outbound else allowed_numbers(outbound)
     except ValueError:
-        raise HTTPException(400, 'Informe números com DDI/DDD, separados por vírgula. Listas vazias e liberação para todos não são permitidas.') from None
+        raise HTTPException(400, 'Informe números com DDI/DDD separados por vírgula. Para ativar, inclua ao menos um contato que possa comandar e receber.') from None
     if not all(authorized_phone(number, recipients) for number in numbers):
         raise HTTPException(400, 'Inclua os números que comandam o Hermes também na lista de quem pode receber respostas.')
     if data.get('confirm') is not True:
@@ -193,7 +194,11 @@ async def restart():
 @router.get('/state')
 async def state():
     value = settings.load()
-    return {'credential_saved': bool(value.get('account_token')), 'credential_kind': value.get('credential_kind', 'account'),
+    group_count = 0
+    if value.get('instance') and (settings.directory() / 'groups.db').exists():
+        with GroupStore(settings.directory(), value['instance']) as store:
+            group_count = store.permitted_count()
+    return {'saved_groups': group_count, 'credential_saved': bool(value.get('account_token')), 'credential_kind': value.get('credential_kind', 'account'),
             'instance': value.get('instance', ''), 'allowed_users': value.get('allowed_users', ''),
             'allowed_recipients': settings.recipient_list(value),
             'buffer_seconds': settings.buffer_seconds(value),
@@ -232,6 +237,13 @@ async def sync_groups(request: Request):
         except ValueError: raise HTTPException(502,'Lista de grupos inválida. O catálogo anterior foi preservado.') from None
     return {'instance':name,'groups':groups}
 
+async def enable_group_events(token, name):
+    await upstream(token, 'POST', f'/api/instance/settings/{name}', payload={'ignoreGroupMessages': False})
+    readback = await upstream(token, 'GET', f'/api/instance/getSettings/{name}')
+    if (readback.get('settings') or {}).get('ignoreGroupMessages') is not False:
+        raise HTTPException(502, 'A RyzeAPI não confirmou o recebimento de grupos.')
+
+
 @router.post('/groups/policy')
 async def group_policy(request: Request):
     data = await body(request)
@@ -250,13 +262,10 @@ async def group_policy(request: Request):
                 try: store.configure(jid,mode,trigger,senders)
                 except ValueError: raise HTTPException(404,'Grupo não encontrado.') from None
             else:
-                result = await upstream(token,'POST',f'/api/instance/settings/{name}',payload={'ignoreGroupMessages':False})
-                # Ryze uses distinct routes for writing and reading settings.
-                readback = await upstream(token,'GET',f'/api/instance/getSettings/{name}')
-                if (readback.get('settings') or {}).get('ignoreGroupMessages') is not False:
-                    raise HTTPException(502,'A RyzeAPI não confirmou o recebimento de grupos. Permissão não aplicada.')
-                if value.get('webhook_configured'):
-                    await verify_hook(value, enabled=True)
+                if value.get('enabled') or value.get('webhook_configured'):
+                    await enable_group_events(token, name)
+                    if value.get('webhook_configured'):
+                        await verify_hook(value, enabled=True)
                 store.configure(jid,mode,trigger,senders)
             groups=store.list()
     return {'saved':True,'instance':name,'groups':groups}
@@ -436,7 +445,7 @@ async def apply_settings(value):
 
 @router.post('/activate')
 async def activate(request: Request):
-    permissions = firewall_fields(await body(request))
+    data = await body(request)
     deployment = infrastructure.load()
     label = deployment['webhook_label']
     url = deployment['webhook_url']
@@ -445,6 +454,12 @@ async def activate(request: Request):
     async with mutation():
         value = settings.load()
         name, token = selected(value)
+        if data.get('instance', name) != name:
+            raise HTTPException(409, 'A instância mudou. Reabra as configurações antes de ativar.')
+        permissions = firewall_fields(data)
+        if data.get('use_saved') and (permissions['allowed_users'] != value.get('allowed_users') or
+                                      permissions['allowed_recipients'] != settings.recipient_list(value)):
+            raise HTTPException(409, 'As permissões mudaram. Reabra as configurações antes de ativar.')
         if value.get('enabled') or value.get('hook_pending'):
             raise HTTPException(409, 'Pause e reconcilie o canal antes de reativar.')
         item = next((i for i in await instances(token, name) if i.get('name') == name), None)
@@ -457,6 +472,11 @@ async def activate(request: Request):
             if hook['label'] == label and not hook['enabled'] and (
                     value.get('hook_label') != label or value.get('hook_instance') != name):
                 raise HTTPException(409, 'Esse label já está reservado. Configure um label exclusivo.')
+        if (settings.directory() / 'groups.db').exists():
+            with GroupStore(settings.directory(), name) as store:
+                groups_enabled = store.permitted_count() > 0
+            if groups_enabled:
+                await enable_group_events(token, name)
         value.update(**permissions, enabled=False, hook_pending=True, hook_url=url, hook_label=label, hook_instance=name,
                      webhook_secret=value.get('webhook_secret') or secrets.token_urlsafe(48))
         settings.save(value)
@@ -479,10 +499,13 @@ async def activate(request: Request):
 
 @router.post('/firewall')
 async def firewall(request: Request):
-    permissions = firewall_fields(await body(request))
+    data = await body(request)
     async with mutation():
         value = settings.load()
-        selected(value)
+        name, _ = selected(value)
+        if data.get('instance', name) != name:
+            raise HTTPException(409, 'A instância mudou. Reabra as configurações antes de salvar.')
+        permissions = firewall_fields(data, paused=not value.get('enabled'))
         value.update(permissions)
         settings.save(value)
         running = False

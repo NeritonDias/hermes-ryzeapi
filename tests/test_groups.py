@@ -249,16 +249,11 @@ class GroupManagementTests(unittest.IsolatedAsyncioTestCase):
     async def test_save_and_block_does_not_restart_or_change_contacts(self):
         await self.prepare()
         prior=settings.load()
-        async def upstream(token,method,path,**kw):
-            self.assertIn(method,('POST','GET'))
-            if method=='POST':
-                self.assertEqual(path,'/api/instance/settings/hermes-test')
-                self.assertEqual(kw['payload'],{'ignoreGroupMessages':False})
-            else:self.assertEqual(path,'/api/instance/getSettings/hermes-test')
-            return {'success':True,'settings':{'ignoreGroupMessages':False}}
-        with patch.object(m,'upstream',side_effect=upstream):
+        with patch.object(m, 'upstream', new=AsyncMock()) as provider:
             body={'instance':'hermes-test','jid':GID,'mode':'listen','trigger':'mentions','senders':'authorized','confirm':True}
             self.assertEqual((await self.client.post('/groups/policy',json=body)).status_code,200)
+        provider.assert_not_awaited()
+        self.assertEqual((await self.client.get('/state')).json()['saved_groups'], 1)
         with GroupStore(settings.directory(),'hermes-test') as reopened:
             self.assertEqual(reopened.policy(GID)['mode'],'listen')
         rows=(await self.client.get('/groups')).json()['groups']
@@ -311,6 +306,7 @@ class GroupManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse((settings.directory()/'group-conversations').exists())
     async def test_provider_failure_never_grants_access(self):
         await self.prepare()
+        value=settings.load(); value['enabled']=True; settings.save(value)
         with patch.object(m,'upstream',new=AsyncMock(return_value={'settings':{'ignoreGroupMessages':True}})):
             result=await self.client.post('/groups/policy',json={'instance':'hermes-test','jid':GID,'mode':'respond','trigger':'all','senders':'all','confirm':True})
             self.assertEqual(result.status_code,502)

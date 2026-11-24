@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.1
+
+Saving contact permissions and group policies works while the channel is paused. Activation is a separate action. The overview shows saved permission counts. The provider's group event settings are applied when the channel is activated.
+
 ## 0.14.0 — 2026-11-24
 
 Stable Hermes v0.23.4 release. The Webapp and Dashboard share a responsive control panel. Coolify deployments use an internal listener on 9131 and explicit gateway redeploy. The controller reconciles webhook ownership, and outbound file reads are confined to the profile attachment directory. Inbound and outbound idempotency remain durable.

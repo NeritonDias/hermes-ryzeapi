@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { Button } from '@nous-research/ui/ui/components/button';
 import { Input } from '@nous-research/ui/ui/components/input';
 import { Label } from '@nous-research/ui/ui/components/label';
-let state = {credential_saved:false,credential_kind:'account',instance:'',allowed_users:'',allowed_recipients:'',enabled:false,runtime_running:false,webhook_configured:false,buffer_seconds:10,echo_transcripts:true};
+let state = {credential_saved:false,credential_kind:'account',instance:'',allowed_users:'',allowed_recipients:'',enabled:false,runtime_running:false,webhook_configured:false,webhook_url:'https://example.test/ryzeapi/events',buffer_seconds:10,echo_transcripts:true};
 let status = 'disconnected';
 let instances = [];
 window.testSeed = value => { Object.assign(state,value); if(state.instance && !instances.includes(state.instance)) instances.push(state.instance); };

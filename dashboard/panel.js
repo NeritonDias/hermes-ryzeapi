@@ -69,7 +69,7 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
       h('p', { id: 'ryze-contact-help', className: 'ryze-help' }, 'DDI + DDD + número. Não libera grupos nem contatos fora desta lista.'),
       message && h('p', { role: 'status', className: 'ryze-help' }, message));
   }
-  function Groups({ instance, drafts, setDrafts, picked, setPicked, disabled }) {
+  function Groups({ instance, drafts, setDrafts, picked, setPicked, disabled, onSaved }) {
     const [rows, setRows] = useState(null), [search, setSearch] = useState('');
     const [open, setOpen] = useState(false), [cursor, setCursor] = useState(-1), [activeGroup, setActiveGroup] = useState('');
     const [removing, setRemoving] = useState('');
@@ -89,6 +89,7 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
         if (!mounted.current) return;
         if (result.instance !== instance) throw new Error('Instance changed');
         setRows(result.groups);
+        onSaved(result.groups.filter(row => row.present && row.mode !== 'blocked').length);
         if (data.jid) {
           setDrafts(previous => { const next = { ...previous }; delete next[instance + ':' + data.jid]; return next; });
           setActiveGroup(''); setRemoving('');
@@ -263,8 +264,8 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
       const next = await api('/state');
       if (alive.current) {
         setState(next);
-        if (!hydrated.current) {
-          hydrated.current = true;
+        if (hydrated.current !== next.instance) {
+          hydrated.current = next.instance;
           setOwners(next.allowed_users || ''); setKind(next.credential_kind || 'account');
           setRecipients(next.allowed_recipients || next.allowed_users || '');
           setBuffer(String(next.buffer_seconds ?? 10)); setEchoTranscripts(next.echo_transcripts ?? true);
@@ -378,10 +379,10 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
       else { const stamp = Date.now(); setNow(stamp); setCode({ ...result, expiresAt: stamp + result.expires_in * 1000 }); }
     }
     async function saveFirewall(activate) {
-      const applied = await api(activate ? '/activate' : '/firewall', { allowed_users: owners, allowed_recipients: recipients, confirm: permit });
+      const applied = await api(activate ? '/activate' : '/firewall', { instance: state.instance, use_saved: activate, allowed_users: owners, allowed_recipients: recipients, confirm: activate || permit });
       const next = await refresh(); setOwners(next.allowed_users || ''); setRecipients(next.allowed_recipients || ''); setPermit(false);
       if (activate) await refreshDiagnostics();
-      setNotice(applied.redeploy_required ? 'Configuração salva. Faça o redeploy deste gateway no Coolify e atualize o estado.' : activate ? 'Hermes ativado com firewall. Envie uma mensagem pelo seu número autorizado para testar.' : 'Firewall salvo. O canal só pode enviar para os destinatários da lista.');
+      setNotice(applied.redeploy_required ? 'Configuração salva. Faça o redeploy deste gateway no Coolify e atualize o estado.' : activate ? 'Hermes ativado com firewall. Envie uma mensagem pelo seu número autorizado para testar.' : next.enabled ? 'Firewall salvo.' : 'Firewall salvo. As permissões estão gravadas e o canal continua pausado.');
     }
     const localFeedback = scope => feedbackScope === scope && h('div', { className: 'ryze-feedback' },
       error && h('p', { role: 'alert', tabIndex: -1, ref: feedback }, error),
@@ -460,7 +461,7 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
         h('div', null, h('strong', null, connected ? 'WhatsApp conectado' : 'Aguardando conexão do WhatsApp'),
           h('p', { className: 'ryze-help' }, connected ? 'Conexão confirmada pela RyzeAPI. O QR foi removido com segurança.' : code ? 'Escaneie o QR. Esta tela confirma automaticamente quando conectar.' : 'Gere um QR Code para iniciar a conexão.'))),
       h('p', { className: 'ryze-poll-note' }, pollMessage, ' Continua verificando enquanto esta etapa estiver aberta e visível.'),
-      connected ? h('div', null, h('p', null, 'WhatsApp conectado', connection.number ? ' · +' + connection.number : '', active ? '. Hermes ativo neste canal.' : '. Falta autorizar quem pode comandar o Hermes.'),
+      connected ? h('div', null, h('p', null, 'WhatsApp conectado', connection.number ? ' · +' + connection.number : '', active ? '. Hermes ativo neste canal.' : '. Consulte as permissões e o estado do canal em Configurações.'),
         button(active ? 'Ver estado do Hermes' : 'Configurar firewall e ativar', () => changeStep(3))) : h(React.Fragment, null,
         h('p', null, 'No WhatsApp do celular, abra Configurações → Dispositivos conectados → Conectar dispositivo.'),
         button(code ? 'Gerar novo QR Code' : 'Gerar QR Code', () => run('Solicitando QR Code… Pode levar até um minuto.', () => generate(false))),
@@ -524,14 +525,19 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
         localFeedback('firewall'),
         dirty(owners !== (state.allowed_users || '') || recipients !== (state.allowed_recipients || ''), () => { setOwners(state.allowed_users || ''); setRecipients(state.allowed_recipients || ''); setPermit(false); }),
         h('p', null, 'Mensagens privadas só podem ser enviadas aos contatos desta lista. Autorizar o recebimento não permite comandar o agente. Grupos têm permissões próprias na seção abaixo.'),
-        form(() => run(state.enabled || !connected ? 'Salvando firewall…' : 'Ativando com firewall…', () => saveFirewall(!state.enabled && connected)),
+        form(() => run('Salvando firewall…', () => saveFirewall(false)),
           h(Contacts, { owners, recipients, disabled: !!busy, onChange: (a, b) => { setOwners(a); setRecipients(b); setPermit(false); } }),
           check('ryze-permit', permit, setPermit, 'Confirmo quem pode dar comandos e receber mensagens privadas. Outros contatos devem ser bloqueados.'),
           !connected && h('p', { className: 'ryze-help' }, 'Você pode salvar o firewall agora. Conecte o WhatsApp para ativar o Hermes.'),
           state.enabled && h('p', { className: 'ryze-help' }, 'Salvar com o canal ativo reinicia o gateway para aplicar as permissões. Em caso de falha, o canal é pausado.'),
-          h('div', { className: 'ryze-actions' }, submit(!state.enabled && connected ? 'Salvar e ativar Hermes' : 'Salvar firewall', !owners || !recipients || !permit),
-            !state.enabled && connected && button('Salvar sem ativar', () => run('Salvando firewall…', () => saveFirewall(false)), !owners || !recipients || !permit, true)))),
-      h(Groups, { instance: state.instance, drafts: groupDrafts, setDrafts: setGroupDrafts, picked: pickedGroups, setPicked: setPickedGroups, disabled: !!busy }));
+          h('div', { className: 'ryze-actions' },
+            submit('Salvar firewall', !permit || (state.enabled && (!owners || !recipients))))),
+        !state.enabled && h('div', {className: 'ryze-actions'},
+          button('Ativar Hermes', () => run('Ativando firewall…', () => saveFirewall(true)),
+            !connected || !state.webhook_url || !owners || owners !== state.allowed_users || recipients !== state.allowed_recipients, true),
+          h('p', {className: 'ryze-help'}, !state.webhook_url ? 'O canal está pausado. Configure a URL do webhook para ativar. Você já pode salvar contatos e grupos.' : 'Para ativar, conecte o WhatsApp e salve ao menos um contato com permissão para comandar e receber.'))),
+      h(Groups, { key: state.instance, instance: state.instance, drafts: groupDrafts, setDrafts: setGroupDrafts, picked: pickedGroups, setPicked: setPickedGroups, disabled: !!busy,
+        onSaved: count => setState(current => current?.instance === state.instance ? {...current, saved_groups: count} : current) }));
     const link = (label, action) => h('button', { type: 'button', className: 'ryze-link', disabled: !!busy, onClick: action }, label, icon('arrow'));
     const instanceTable = rows => rows.length ? h('table', { className: 'ryze-table ryze-instance-table' },
       h('thead', null, h('tr', null, ...['Nome da instância', 'Status do WhatsApp', 'Vinculação ao Hermes', 'Ações'].map(label => h('th', { key: label, scope: 'col' }, label)))),
@@ -571,7 +577,7 @@ function createRyzePanel(React, { Button, Input, Label }, api) {
           h('dl', null, ...[
             ['Buffer', (state.buffer_seconds ?? 10) + ' s', 'Tempo para agrupar mensagens antes do processamento.'],
             ['Transcrições', state.echo_transcripts === false ? 'Só para IA' : 'Na conversa', state.echo_transcripts === false ? 'As transcrições são enviadas apenas para a IA do Hermes.' : 'As transcrições também são enviadas na conversa.'],
-            ['Permissões', 'Restritas', 'O Hermes pode responder apenas conforme as permissões definidas.']
+            ['Permissões salvas', numbers(state.allowed_recipients).length + ' contatos · ' + (state.saved_groups ?? 0) + ' grupos', numbers(state.allowed_users).length + ' contatos podem comandar o Hermes.']
           ].map(([label, value, help]) => h('div', { key: label }, h('dt', null, label), h('dd', null, value), h('dd', { className: 'ryze-help' }, help)))),
           button(h(React.Fragment, null, icon('settings'), 'Editar configurações'), () => { setStep(3); navigate(3); }, false, true))),
       h('section', { className: 'ryze-other' }, h('h3', null, 'Outras instâncias'), instanceTable(items.filter(item => item.name !== state.instance))),

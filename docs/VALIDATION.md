@@ -1,5 +1,9 @@
 # Release validation
 
+## 0.14.1 — 2026-11-24
+
+All 228 backend tests passed on Linux ARM64 with the official Hermes v0.23.4 image. Chromium exercised the generated Webapp extension against the plugin REST API in an isolated profile using synthetic provider data. A receive-only contact and a listen-only group survived a full page reload. The channel stayed paused.
+
 ## 0.14.0 stable — 2026-11-24
 
 Verified on Linux ARM64 in the official Hermes 0.23.4 image. All 227 backend tests passed. Native Plugin Doctor registered the fourteen agent tools. Coverage includes conflicting receivers, ownership after uncertain webhook writes, authorization of the management API, private file reads, deduplication and operation with the Webapp port already occupied.

@@ -2,7 +2,7 @@
 
 [![English](https://img.shields.io/badge/Language-English-196b62)](INSTALL.md) [![Português (Brasil)](https://img.shields.io/badge/Idioma-PT--BR-196b62)](INSTALL.pt-BR.md)
 
-[Voltar ao README](../README.pt-BR.md) · Distribuição **0.14.0**.
+[Voltar ao README](../README.pt-BR.md) · Distribuição **0.14.1**.
 
 ## Pré-requisitos
 
@@ -11,14 +11,15 @@
 - Conta RyzeAPI, cota disponível e WhatsApp autorizado para pareamento.
 - Dashboard autenticado e webhook público HTTPS. Domínios, portas de borda, certificados e autenticação são responsabilidade da sua infraestrutura.
 
-Ambiente validado para a v0.14.0: imagem oficial Hermes v0.23.4 em Linux ARM64. Este plugin não instala modelos, não fornece hospedagem e não usa uma conta do autor.
+Ambiente validado para a v0.14.1: imagem oficial Hermes v0.23.4 em Linux ARM64. Este plugin não instala modelos, não fornece hospedagem e não usa uma conta do autor.
 
 ## Instalar
 
 Revise o código e permissões: um plugin Python roda com acesso do processo Hermes.
 
 ```bash
-hermes plugins install NeritonDias/hermes-ryzeapi --ref 32f05862a82904f5b2c42d8a668165152c7e9f20 --no-deps --no-enable
+commit=$(git ls-remote --refs https://github.com/NeritonDias/hermes-ryzeapi.git refs/tags/v0.14.1 | cut -f1)
+hermes plugins install NeritonDias/hermes-ryzeapi --ref "${commit:?v0.14.1}" --no-deps --no-enable
 hermes plugins list
 ```
 
@@ -44,6 +45,8 @@ No **Webapp do Hermes v0.23.4**, entre com a conta do proprietário e abra **Cap
 Execute o comando de configuração abaixo no contêiner com `--lifecycle coolify --listener-host 0.0.0.0 --owner-subject "$OIDC_SUB" --owner-issuer "$OIDC_ISS"`. Use o ID exato do proprietário identificado pelo Hermes e o emissor OIDC verificado. A API administrativa recusa outras identidades. A porta 9131 fica na rede privada do proxy, sem publicação no host. Configure uma única rota Traefik para o hostname dedicado, caminho exato `/ryzeapi/events` e método POST, apontando para este gateway na porta 9131. O Webapp continua na porta interna 9120. Consulte o [modelo da rota](traefik.example.yaml). Para migrar uma configuração existente que usa 9120, execute novamente o configurador.
 
 Após ativar ou alterar permissões, faça o redeploy apenas deste gateway quando solicitado. Atualize a tela para confirmar a saúde do receptor. Pausar revoga as permissões locais imediatamente e desativa o webhook próprio no provedor. Use **Reconciliar e pausar** se a resposta remota for incerta. Use instância, label e perfil dedicados. Coloque os arquivos aprovados em `$HERMES_HOME/workspace/attachments/` e informe um caminho relativo a esse diretório.
+
+Em **Configurações**, marque as permissões do contato, confirme e clique em **Salvar firewall**. Para cada grupo, escolha o modo, confirme e clique em **Salvar grupo**. As permissões ficam no volume do perfil, inclusive com o canal pausado. **Ativar Hermes** é uma ação separada e exige o webhook configurado e um contato com permissão para comandar e receber.
 
 ## Configurar a publicação
 

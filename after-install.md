@@ -1,6 +1,6 @@
 # RyzeAPI installed
 
-Author: Neriton Dias · Instagram @neritondias · 0.14.0.
+Author: Neriton Dias · Instagram @neritondias · 0.14.1.
 
 1. Read README.md and docs/INSTALL.md. Português: README.pt-BR.md and docs/INSTALL.pt-BR.md.
 2. In the Webapp enable the Agent and Desktop halves. Configure your OIDC owner, internal listener and HTTPS webhook route using the install guide.
