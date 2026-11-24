@@ -162,6 +162,18 @@ class ManagementTests(unittest.IsolatedAsyncioTestCase):
             result=await self.client.post('/firewall',json={'allowed_users':OWNER,'allowed_recipients':recipients,'confirm':True})
             self.assertEqual(result.status_code,400)
 
+    async def test_paused_receive_only_survives_failed_activation_and_reload(self):
+        await self.setup_selected()
+        request = {'allowed_users': '', 'allowed_recipients': OWNER, 'confirm': True}
+        response = await self.client.post('/firewall', json=request)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual((await self.client.post('/activate', json=request)).status_code, 400)
+        state = (await self.client.get('/state')).json()
+        self.assertFalse(state['enabled'])
+        self.assertEqual((state['allowed_users'], state['allowed_recipients']), ('', OWNER))
+        self.assertEqual((await self.client.post('/firewall', json={**request, 'allowed_recipients': ''})).status_code, 200)
+        self.assertEqual((await self.client.get('/state')).json()['allowed_recipients'], '')
+
     async def test_live_firewall_failure_pauses_channel(self):
         await self.setup_selected()
         value=settings.load();value.update(enabled=True,allowed_users=OWNER);settings.save(value)

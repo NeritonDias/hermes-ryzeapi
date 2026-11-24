@@ -2,7 +2,7 @@
 
 [![English](https://img.shields.io/badge/Language-English-196b62)](INSTALL.md) [![Português (Brasil)](https://img.shields.io/badge/Idioma-PT--BR-196b62)](INSTALL.pt-BR.md)
 
-[Back to README](../README.md) · Distribution **0.14.0**.
+[Back to README](../README.md) · Distribution **0.14.1**.
 
 ## Prerequisites
 
@@ -11,14 +11,15 @@
 - Your own RyzeAPI account, available instance quota and an authorized WhatsApp account to pair.
 - An authenticated dashboard and a public HTTPS webhook. You provide domains, edge routing, certificates and authentication.
 
-Validated environment for v0.14.0: official Hermes v0.23.4 image on Linux ARM64. This plugin does not install models, provide hosting or use the author's account.
+Validated environment for v0.14.1: official Hermes v0.23.4 image on Linux ARM64. This plugin does not install models, provide hosting or use the author's account.
 
 ## Install
 
 Review code and permissions first: a Python plugin runs with the Hermes process's access.
 
 ```bash
-hermes plugins install NeritonDias/hermes-ryzeapi --ref 32f05862a82904f5b2c42d8a668165152c7e9f20 --no-deps --no-enable
+commit=$(git ls-remote --refs https://github.com/NeritonDias/hermes-ryzeapi.git refs/tags/v0.14.1 | cut -f1)
+hermes plugins install NeritonDias/hermes-ryzeapi --ref "${commit:?v0.14.1}" --no-deps --no-enable
 hermes plugins list
 ```
 
@@ -40,6 +41,8 @@ On the first load of the enabled plugin, `ryzeapi` and `ryzeapi-painel` are inst
 ## Hermes Webapp and Coolify
 
 In the **Hermes v0.23.4 Webapp**, sign in as the owner and open **Capabilities → Plugins** in the gateway profile. For a new installation, use **Install from Git** with `NeritonDias/hermes-ryzeapi`. If the package is already installed, open **RyzeAPI** in that list. Enable **Agent** to load the tools and **Desktop** to show **RyzeAPI** in the sidebar. The Desktop choice is saved in this browser.
+
+In **Configurações**, choose the contact permissions, confirm them and click **Salvar firewall**. For each group, select a mode, confirm and click **Salvar grupo**. These permissions are stored in the profile volume even while the channel is paused. **Ativar Hermes** is a separate action that requires a configured webhook and a contact authorized to send commands and receive replies.
 
 Use the deployment command below with `--lifecycle coolify --listener-host 0.0.0.0 --owner-subject "$OIDC_SUB" --owner-issuer "$OIDC_ISS"` inside the gateway container. Use the authenticated owner's exact Hermes user ID and verified OIDC issuer. The management API refuses other identities. Keep port 9131 internal to the private proxy network, without a published host port. A single Traefik rule must match the dedicated webhook host, exact path `/ryzeapi/events` and method POST, targeting this gateway on port 9131. The Webapp stays on internal port 9120. See the [route template](traefik.example.yaml). Run the deployment script again to migrate a saved 9120 listener.
 
